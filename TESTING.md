@@ -413,6 +413,30 @@ A/V drift меньше 80 мс, ровно 75 кадров и полный decod
 осмотра, печатает два абсолютных final path и подтверждает неизменность защищённых
 `src/data/captions.js` и `src/data/transcript.json`.
 
+### Чистый клон кандидата
+
+Финальная проверка выполняется не в рабочей папке, а из нового локального clone без hardlinks:
+
+```bash
+RELEASE_CHECK_DIR="$(mktemp -d)"
+git clone --local --no-hardlinks . "$RELEASE_CHECK_DIR/AutoMontage-Agent"
+cd "$RELEASE_CHECK_DIR/AutoMontage-Agent"
+npm ci --no-audit --no-fund
+npm run doctor
+npm run check:privacy
+npm run check:release
+npm audit --audit-level=high
+npm test
+npm run demo
+npm run smoke:release
+npm pack --dry-run
+```
+
+Проверь начало, середину и конец neutral demo: в кадре и звуке не должно быть человека,
+клиентского скриншота, частной темы или логотипа без строки в `ASSETS.md`. В отчёт релиза
+попадают только общие результаты команд; локальные каталоги, имена исходников и hashes клиентов
+не копируются.
+
 ## 9. Проверка секретов и зависимостей
 
 ```bash

@@ -522,12 +522,13 @@ portable descriptor-relative `unlinkat`/`rmdirat`, поэтому между п�
 
 | Переменная | Обязательность | Назначение |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | одна из двух для создания lesson draft | LLM-проруф и раскладка сцен |
-| `OPENAI_API_KEY` | альтернатива Anthropic | LLM-проруф, lesson brief и слайды |
+| `ANTHROPIC_API_KEY` | только legacy/developer opt-in | provider-режим старого генератора brief; стандартный монтаж не использует |
+| `OPENAI_API_KEY` | только явный отдельный opt-in | provider-режим или подтверждённая генерация изображения, когда текущая модель не умеет её сама |
 | `THEMES_EXT` | опционально | корневая папка внешних тем `<id>/theme.json` |
 | `AUTOMONTAGE_FFMPEG_DIR` | опционально | каталог отдельной `ffmpeg` + `ffprobe`; CLI ставит его первым в дочерний `PATH` |
 
-Основной Dynamic-рендер и `automontage demo` работают без API-ключей.
+Dynamic, канонический lesson через текущую подписку Claude Code/Codex, Review, preview, render,
+QA и `automontage demo` работают без provider API-ключей.
 
 ## 8. Внешние зависимости
 
@@ -550,6 +551,8 @@ portable descriptor-relative `unlinkat`/`rmdirat`, поэтому между п�
 - Все визуальные слои используют общий таймкод; A/V-синхрон проверяется в начале, середине и конце.
 - Тексты должны оставаться в safe-zone обеих ориентаций.
 - Секреты, приватные темы, пользовательские медиа и локальная память не попадают в Git.
+- `scripts/check-public-privacy.js` проверяет tracked tree в CI и staged blobs перед коммитом;
+  Gitleaks отдельно сканирует секреты, поэтому один gate не подменяет другой.
 - Внешние инструменты получают отдельные argv без shell; длинные процессы наследуют stdio,
   а короткий capture ограничен явным `maxBuffer` и проверяет error/status/signal.
 - Release checker читает committed Git-объект, а не рабочую папку; smoke подтверждает оба
