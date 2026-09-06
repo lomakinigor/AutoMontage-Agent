@@ -64,6 +64,9 @@ jobs:
       - name: Проверить high/critical уязвимости зависимостей
         run: npm audit --audit-level=high
 
+      - name: Проверить публичное дерево на личные данные и медиа
+        run: npm run check:privacy
+
       - name: Запустить тесты
         run: npm test
 

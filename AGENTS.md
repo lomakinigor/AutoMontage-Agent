@@ -181,8 +181,10 @@ node scripts/cli.js --help     # актуальные пользовательс
 локальная память, `_progress.md`, `.env*`, исходные ролики, музыка, рендеры и приватный
 бренд-пак.
 
-Перед коммитом проверить `git diff --cached` и убедиться, что там нет секретов,
-личных путей и медиа пользователя. Локальный hook `.githooks/pre-commit` запускает
-`gitleaks` по staged-файлам; GitHub CI повторно сканирует полную историю на push и PR.
+Перед коммитом проверить `git diff --cached`, затем запустить privacy-check и Gitleaks.
+`node scripts/check-public-privacy.js --staged` читает точные bytes Git index и блокирует
+клиентские артефакты, личные пути, локальную память, `.env` и медиа без записи в `ASSETS.md`;
+Gitleaks отдельно ищет ключи и токены. Локальный hook `.githooks/pre-commit` запускает обе
+проверки; GitHub CI проверяет публичное дерево и повторно сканирует полную историю на push и PR.
 Hook активируется командой `git config core.hooksPath .githooks`. Не обходить его через
 `--no-verify`. Push и публикация – только по явному запросу.

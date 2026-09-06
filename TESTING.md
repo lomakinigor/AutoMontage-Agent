@@ -355,8 +355,8 @@ node scripts/benchmark-preview.js \
 
 ## 7. CI
 
-`.github/workflows/ci.yml` сохраняет обычный Node 20 job с `npm ci`, `npm test` и
-`npm run check:release` на pull request и push в `main`. Отдельный browser job выполняет
+`.github/workflows/ci.yml` сохраняет обычный Node 20 job с `npm ci`, `npm run check:privacy`,
+`npm test` и `npm run check:release` на pull request и push в `main`. Отдельный browser job выполняет
 `npm ci --no-audit --no-fund`, устанавливает Playwright Chromium и запускает
 `npm run test:review-ui`. Оба Linux job явно устанавливают системный FFmpeg, проверяют
 `ffmpeg`, `ffprobe`, `libwebp`, `libx264`, `libvpx`, `libopus` и AAC до тестов: отсутствие
@@ -416,13 +416,21 @@ A/V drift меньше 80 мс, ровно 75 кадров и полный decod
 ## 9. Проверка секретов и зависимостей
 
 ```bash
+npm run check:privacy                         # всё отслеживаемое публичное дерево
+node scripts/check-public-privacy.js --staged # точные bytes будущего коммита
 gitleaks git --staged --redact=100      # что готовится в ближайший коммит
 gitleaks git . --log-opts=--all --redact=100  # вся история и все локальные ветки
 npm audit                               # известные проблемы зависимостей
 ```
 
-Локальный `.githooks/pre-commit` выполняет первый скан автоматически. Активировать его
-один раз: `git config core.hooksPath .githooks`. Реальное совпадение нельзя добавлять в
+`check:privacy` блокирует клиентские project/output/memory-файлы, приватные `.env`, абсолютные
+локальные пути и бинарные медиа без полной шестиколоночной записи в `ASSETS.md`. Режим
+`--staged` читает содержимое прямо из Git index, поэтому безопасная незакоммиченная копия файла
+не может скрыть утечку в staged blob. Gitleaks решает другую задачу: ищет API-ключи, токены и
+пароли. Перед публичным коммитом обязательны обе независимые проверки.
+
+Локальный `.githooks/pre-commit` сначала выполняет staged privacy-check, затем Gitleaks.
+Активировать hook один раз: `git config core.hooksPath .githooks`. Реальное совпадение нельзя добавлять в
 allowlist: сначала удалить секрет из staged-файлов и немедленно перевыпустить ключ, если
 он уже успел попасть в коммит или удалённый репозиторий.
 
