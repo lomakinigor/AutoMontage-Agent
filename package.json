@@ -20,6 +20,7 @@
   "scripts": {
     "doctor": "node scripts/doctor.js",
     "demo": "node scripts/cli.js demo",
+    "generate:fixtures": "node scripts/generate-neutral-fixtures.js",
     "montage": "node scripts/build.js",
     "preview": "node scripts/preview.js",
     "qa:preview": "node scripts/qa-preview.js",
