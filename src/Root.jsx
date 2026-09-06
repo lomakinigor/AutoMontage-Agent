@@ -50,13 +50,13 @@ export const RemotionRoot = () => {
       <Composition
         id="Job1"
         component={Timeline}
-        durationInFrames={1325}
+        durationInFrames={350}
         fps={25}
         width={1870}
         height={1080}
         defaultProps={scenarioJob1}
         calculateMetadata={({ props }) => ({
-          durationInFrames: props.durationInFrames || 1325,
+          durationInFrames: props.durationInFrames || 350,
           width: props.width || 1870,
           height: props.height || 1080,
           fps: props.fps || 25,
@@ -66,7 +66,7 @@ export const RemotionRoot = () => {
       <Composition
         id="Job1V"
         component={Timeline}
-        durationInFrames={1325}
+        durationInFrames={350}
         fps={25}
         width={1080}
         height={1920}
@@ -76,7 +76,7 @@ export const RemotionRoot = () => {
       <Composition
         id="Preview"
         component={Timeline}
-        durationInFrames={3100}
+        durationInFrames={350}
         fps={25}
         width={1080}
         height={1920}
@@ -86,7 +86,7 @@ export const RemotionRoot = () => {
       <Composition
         id="PreviewH"
         component={Timeline}
-        durationInFrames={3100}
+        durationInFrames={350}
         fps={25}
         width={1280}
         height={720}

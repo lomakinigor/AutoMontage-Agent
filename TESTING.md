@@ -355,8 +355,8 @@ node scripts/benchmark-preview.js \
 
 ## 7. CI
 
-`.github/workflows/ci.yml` сохраняет обычный Node 20 job с `npm ci`, `npm test` и
-`npm run check:release` на pull request и push в `main`. Отдельный browser job выполняет
+`.github/workflows/ci.yml` сохраняет обычный Node 20 job с `npm ci`, `npm run check:privacy`,
+`npm test` и `npm run check:release` на pull request и push в `main`. Отдельный browser job выполняет
 `npm ci --no-audit --no-fund`, устанавливает Playwright Chromium и запускает
 `npm run test:review-ui`. Оба Linux job явно устанавливают системный FFmpeg, проверяют
 `ffmpeg`, `ffprobe`, `libwebp`, `libx264`, `libvpx`, `libopus` и AAC до тестов: отсутствие
@@ -413,16 +413,57 @@ A/V drift меньше 80 мс, ровно 75 кадров и полный decod
 осмотра, печатает два абсолютных final path и подтверждает неизменность защищённых
 `src/data/captions.js` и `src/data/transcript.json`.
 
+### Чистый клон кандидата
+
+Финальная проверка выполняется не в рабочей папке, а из нового локального clone без hardlinks:
+
+```bash
+RELEASE_CHECK_DIR="$(mktemp -d)"
+git clone --local --no-hardlinks . "$RELEASE_CHECK_DIR/AutoMontage-Agent"
+cd "$RELEASE_CHECK_DIR/AutoMontage-Agent"
+npm ci --no-audit --no-fund
+npm run doctor
+npm run check:privacy
+npm run check:release
+npm audit --audit-level=high
+npm test
+npm run demo
+npm run smoke:release
+npm pack --dry-run
+```
+
+`tests/package-privacy.test.js` отдельно читает реальный npm packlist: публичные CLI, batch-guide,
+skill и `.env.example` обязаны присутствовать, а `docs/superpowers/`, project workspace, рендеры
+и локальная память обязаны отсутствовать. Это закрывает файлы, которые не отслеживаются Git, но
+физически лежат рядом с checkout и без `.npmignore` могли бы попасть в архив.
+
+Проверь начало, середину и конец neutral demo: в кадре и звуке не должно быть человека,
+клиентского скриншота, частной темы или логотипа без строки в `ASSETS.md`. В отчёт релиза
+попадают только общие результаты команд; локальные каталоги, имена исходников и hashes клиентов
+не копируются.
+
 ## 9. Проверка секретов и зависимостей
 
 ```bash
+npm run check:privacy                         # всё отслеживаемое публичное дерево
+node scripts/check-public-privacy.js --staged # точные bytes будущего коммита
 gitleaks git --staged --redact=100      # что готовится в ближайший коммит
 gitleaks git . --log-opts=--all --redact=100  # вся история и все локальные ветки
 npm audit                               # известные проблемы зависимостей
 ```
 
-Локальный `.githooks/pre-commit` выполняет первый скан автоматически. Активировать его
-один раз: `git config core.hooksPath .githooks`. Реальное совпадение нельзя добавлять в
+`check:privacy` блокирует клиентские project/output/memory-файлы, приватные `.env`, абсолютные
+локальные пути и бинарные медиа без полной шестиколоночной записи в `ASSETS.md`. Режим
+`--staged` читает содержимое прямо из Git index, поэтому безопасная незакоммиченная копия файла
+не может скрыть утечку в staged blob. Gitleaks решает другую задачу: ищет API-ключи, токены и
+пароли. Перед публичным коммитом обязательны обе независимые проверки.
+
+Перед публикацией npm-архива дополнительно запускай `npm pack --dry-run` и
+`node --test tests/package-privacy.test.js`: Git privacy gate проверяет репозиторий, но не является
+списком содержимого package tarball.
+
+Локальный `.githooks/pre-commit` сначала выполняет staged privacy-check, затем Gitleaks.
+Активировать hook один раз: `git config core.hooksPath .githooks`. Реальное совпадение нельзя добавлять в
 allowlist: сначала удалить секрет из staged-файлов и немедленно перевыпустить ключ, если
 он уже успел попасть в коммит или удалённый репозиторий.
 

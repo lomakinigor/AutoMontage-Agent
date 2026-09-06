@@ -119,7 +119,14 @@ FPS также наследуется без округления: наприм�
 
 Перекадрирование (например, из горизонта в вертикаль со слежением за лицом) делается **только по твоему запросу**. В конце агент может спросить, нужна ли версия в другом формате.
 
-## Один ролик = одна папка проекта
+## Один ролик или пакет
+
+Один ролик проходит полный lesson-маршрут ниже. Для нескольких Reels и вариантов одного хука
+используй [пакетный workflow](docs/BATCH-REELS-WORKFLOW.md): подготовка и анализ могут идти
+параллельно, но каждый результат получает отдельную игнорируемую project-папку, собственное
+утверждение и QA. Полные Remotion-рендеры в одном checkout выполняются последовательно.
+
+### Один ролик = одна папка проекта
 
 Для работы под ключ используй project-режим. Движок создаст локальную папку
 `projects/YYYY.MM.DD_latin-slug/` и сложит туда копию исходника, транскрипт, все версии ТЗ,
@@ -476,6 +483,8 @@ Remotion (анимация плашек кодом), faster-whisper (распо�
 ### Документация
 
 - [docs/TEMPLATES.md](docs/TEMPLATES.md) – команды, форматы и канонический lesson-процесс.
+- [docs/BATCH-REELS-WORKFLOW.md](docs/BATCH-REELS-WORKFLOW.md) – несколько Reels, варианты
+  хуков, векторные объяснения, обложки и пакетный QA.
 - [docs/REVIEW-WORKBENCH.md](docs/REVIEW-WORKBENCH.md) – полная работа с монтажом в браузере.
 - [docs/SCENE-CATALOG.md](docs/SCENE-CATALOG.md) – семь официальных сцен и их возможности.
 - [ARCHITECTURE.md](ARCHITECTURE.md) – модули, потоки данных и границы системы.
@@ -487,8 +496,8 @@ Remotion (анимация плашек кодом), faster-whisper (распо�
 
 ### Версии и история изменений
 
-Текущая версия: **v1.4.0**
-([GitHub Release](https://github.com/mcdenil-skills/AutoMontage-Agent/releases/tag/v1.4.0)). Источник номера
+Текущая версия: **v1.5.0**
+([GitHub Release](https://github.com/mcdenil-skills/AutoMontage-Agent/releases/tag/v1.5.0)). Источник номера
 в репозитории – `version` в `package.json` и корневая запись в `package-lock.json`; состав
 релиза описан в [CHANGELOG.md](CHANGELOG.md).
 
@@ -508,11 +517,11 @@ Remotion (анимация плашек кодом), faster-whisper (распо�
 git config core.hooksPath .githooks
 ```
 
-Перед каждым коммитом hook запускает `gitleaks` по staged-файлам и блокирует коммит при
-подозрении на API-ключ, токен или пароль. В GitHub тот же контроль повторяется на каждый
-push и pull request с полной историей репозитория. В настройках репозитория дополнительно
-включены GitHub Secret Scanning и Push Protection. Не обходи локальную проверку через
-`--no-verify`.
+Перед каждым коммитом hook сначала проверяет точные staged blobs командой
+`node scripts/check-public-privacy.js --staged`: клиентские папки, личные абсолютные пути,
+приватные `.env` и неучтённые бинарные медиа блокируются до коммита. Затем Gitleaks ищет
+API-ключи, токены и пароли. В GitHub обе независимые проверки повторяются на каждый push и pull
+request, а Gitleaks сканирует полную историю. Не обходи локальный hook через `--no-verify`.
 
 `npm audit --audit-level=high` блокирует high/critical advisories. Пять текущих moderate
 записей сводятся к одному transitive `file-type` advisory внутри optional `--autotheme`;
