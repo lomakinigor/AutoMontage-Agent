@@ -172,6 +172,22 @@ Preview не имеет отдельного HTML- или FFmpeg-дизайна:
 одни scene props, тему, шрифты, media bundle и аудиопорядок; разрешённые различия preview
 ограничены scale, CRF и watermark.
 
+#### 3.2.1 Пакет Reels и hook-family
+
+Пакетный монтаж является оркестрацией нескольких независимых lesson-workspace, а не новой
+render capability. Локальный игнорируемый batch index связывает `itemId`, fingerprint исходника,
+`hookFamily`, состояние approval/QA и относительные пути preview/final. Канонические данные
+каждого результата остаются в его собственном `projects/<id>/project.json`.
+
+Для hook-family агент один раз фиксирует общую основу после точки стыка и проверяет её identity
+во всех вариантах: речь, сцены, графика, субтитры и музыка должны совпасть. Отдельный вариант
+можно вернуть в draft независимо; изменение общей основы инвалидирует approval и QA всей семьи.
+
+Подготовка транскриптов, brief и активов может идти параллельно. Полные Remotion-рендеры в одном
+checkout выполняются последовательно из-за общих legacy `tmp/`; параллельные render workers
+требуют отдельных clone/worktree. Публичный контракт процесса описан в
+[docs/BATCH-REELS-WORKFLOW.md](docs/BATCH-REELS-WORKFLOW.md).
+
 ### 3.3 Review Workbench — локальная проверка до рендера
 
 Эта секция описывает внутренние границы безопасности. Пошаговая работа пользователя с окном
@@ -469,6 +485,8 @@ symlink; symlink прерывает построение cache key.
 
 - `projects/YYYY.MM.DD_<slug>/` – основной локальный workspace одного ролика. В нём лежат
   `project.json`, один исходник, транскрипт, ревизии brief, активы, превью, версии рендера и финал.
+- Локальный batch index – игнорируемый сводный указатель на независимые project workspace; он не
+  заменяет их manifest, не является release asset и не попадает в Git.
 - `project.json` – журнал относительных project-путей, статусов brief и рендеров. Только
   `source.originalPath` хранит исторический абсолютный путь исходника.
 - `assets/broll/images|video/<uuid>/` – immutable normalized master и bounded `asset.json`;
