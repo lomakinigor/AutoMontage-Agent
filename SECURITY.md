@@ -15,7 +15,7 @@ triggers are recorded below and accepted by `npm run check:release`.
 
 ## Temporary dependency exception
 
-As of 2026-08-23, `npm audit` reports five moderate findings that all describe one
+As of 2026-09-06, `npm audit` reports five moderate findings that all describe one
 transitive advisory. The installed path is:
 
 ```text
@@ -42,11 +42,13 @@ user, so a hang remains an availability risk and is not treated as fixed.
 We keep `node-vibrant@4.0.4`. We do not run `npm audit fix --force`, install a major
 override, or downgrade to the incompatible 3.x line. Reassess immediately on an upstream
 node-vibrant/Jimp update, if severity becomes high, if direct untrusted-image input is
-introduced, at the next release, or no later than 2026-09-04.
+introduced, at the next release, or no later than 2026-10-06.
 
-For release 1.4.0, the GitHub Security Advisory, npm registry metadata, and the installed
-transitive dependency chain were reviewed again on 2026-08-23. They still match the advisory,
-package path, and mitigation recorded below.
+For release 1.5.0, the GitHub Security Advisory, npm registry metadata, and the installed
+transitive dependency chain were reviewed again on 2026-09-06. The latest upstream
+`node-vibrant` remains 4.0.4; the installed chain and limited local `--autotheme` exposure still
+match the advisory and mitigation recorded below. This review accepts the remaining moderate
+availability risk until 2026-10-06; it does not claim that the dependency is fixed.
 
 The block below is the machine-readable release-gate record. Keep the prose and JSON in
 sync. The gate also derives the installed five-package chain from the candidate
@@ -76,8 +78,8 @@ it matches the dated section for `reviewedFor` and is not in the future.
     "direct untrusted-image input",
     "next release"
   ],
-  "reviewedAt": "2026-08-23",
-  "reviewedFor": "1.4.0",
-  "revisitBy": "2026-09-04"
+  "reviewedAt": "2026-09-06",
+  "reviewedFor": "1.5.0",
+  "revisitBy": "2026-10-06"
 }
 ```

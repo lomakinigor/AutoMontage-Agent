@@ -94,6 +94,23 @@ function writeSecurityException(root, exception) {
   ].join('\n'));
 }
 
+test('repository dependency exception is reviewed for the 1.5.0 release window', () => {
+  const security = fs.readFileSync(path.join(__dirname, '..', 'SECURITY.md'), 'utf8');
+  const match = security.match(/```json security-exception\s*([\s\S]*?)```/);
+  assert.ok(match, 'SECURITY.md must contain one machine-readable dependency exception');
+
+  const exception = JSON.parse(match[1]);
+  assert.deepEqual({
+    reviewedAt: exception.reviewedAt,
+    reviewedFor: exception.reviewedFor,
+    revisitBy: exception.revisitBy,
+  }, {
+    reviewedAt: '2026-09-06',
+    reviewedFor: '1.5.0',
+    revisitBy: '2026-10-06',
+  });
+});
+
 function enableNodeVibrant(root) {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
