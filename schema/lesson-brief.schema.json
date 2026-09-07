@@ -138,6 +138,15 @@
           "statCream": { "type": "string" },
           "statOrange": { "type": "string" },
           "brollSrc": { "type": "string", "minLength": 1 },
+          "brollReview": {
+            "type": "object", "additionalProperties": false,
+            "required": ["assetSha256", "scanSha256", "allowEmbeddedText"],
+            "properties": {
+              "assetSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "scanSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "allowEmbeddedText": { "const": true }
+            }
+          },
           "brollIntent": { "$ref": "#/definitions/brollIntent" },
           "showSpeakerPip": { "type": "boolean" },
           "brollMedia": {
@@ -170,6 +179,10 @@
           }
         },
         "allOf": [
+          {
+            "if": { "required": ["brollReview"] },
+            "then": { "required": ["brollMedia"], "properties": { "scene": { "const": "broll" } } }
+          },
           {
             "if": { "properties": { "scene": { "const": "fullscreen" } } },
             "then": { "required": ["caption"] }

@@ -152,6 +152,16 @@ function diffLessonBrief({ before, after } = {}) {
   addBoundaryChanges(before, after, expected, changes);
   addAssetChanges(before, after, expected, changes);
   addBrollQueryChanges(before, after, expected, changes);
+  for (let index = 0; index < before.scenes.length; index += 1) {
+    const previous = before.scenes[index].brollReview;
+    const next = after.scenes[index].brollReview;
+    if (previous === next) continue;
+    if (before.scenes[index].scene !== 'broll' || after.scenes[index].scene !== 'broll'
+      || (previous !== undefined && previous !== true) || (next !== undefined && next !== true)) unsupportedDiff();
+    if (next === true) expected.scenes[index].brollReview = true;
+    else delete expected.scenes[index].brollReview;
+    changes.push({kind: 'embedded-text', scene: index, from: previous === true, to: next === true});
+  }
   if (!isDeepStrictEqual(expected, after)) unsupportedDiff();
   return changes;
 }
