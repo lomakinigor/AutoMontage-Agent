@@ -1,0 +1,926 @@
+{
+  "provider": "openverse",
+  "model": "timm/ViT-B-16-SigLIP2",
+  "modelRevision": "eee10eff6dd8cabae2d7f379d4e8cfcd352030aa",
+  "python": "3.12.13",
+  "torch": "2.14.0",
+  "open_clip": "3.3.0",
+  "device": "cpu",
+  "precision": "fp32",
+  "threads": 4,
+  "importsSeconds": 4.171501208998961,
+  "modelSeconds": 10.347521916002734,
+  "queries": [
+    {
+      "id": "object",
+      "ru": "робот-пылесос объезжает мебель в современной квартире",
+      "en": "robot vacuum cleaning a modern apartment around furniture",
+      "providerQuery": "robot vacuum",
+      "candidateCount": 12,
+      "seconds": 0.8176284579967614,
+      "candidates": [
+        {
+          "id": "d33311fe-a91b-429a-9bd0-6e5a88047c8e",
+          "providerPosition": 1,
+          "blindTag": "K",
+          "grade": 3,
+          "scoreRu": 0.12565173208713531,
+          "scoreEn": 0.08257029205560684
+        },
+        {
+          "id": "1d77caf3-6ca2-4101-b48a-c40554bfee5a",
+          "providerPosition": 2,
+          "blindTag": "C",
+          "grade": 2,
+          "scoreRu": 0.1226230263710022,
+          "scoreEn": 0.11557140946388245
+        },
+        {
+          "id": "8b92f6ce-c413-40d7-b687-d6496c0b4f49",
+          "providerPosition": 3,
+          "blindTag": "A",
+          "grade": 2,
+          "scoreRu": 0.10611337423324585,
+          "scoreEn": 0.09598430246114731
+        },
+        {
+          "id": "7f605bb0-49f0-4ed5-99db-902cce4db47a",
+          "providerPosition": 4,
+          "blindTag": "L",
+          "grade": 1,
+          "scoreRu": 0.03340756893157959,
+          "scoreEn": -0.033584319055080414
+        },
+        {
+          "id": "1f48a5bb-4785-40f4-bbe6-164a1ece2d5a",
+          "providerPosition": 5,
+          "blindTag": "H",
+          "grade": 2,
+          "scoreRu": 0.13084609806537628,
+          "scoreEn": 0.11041136831045151
+        },
+        {
+          "id": "9767c601-87a1-437c-9ceb-66ba93fe51c1",
+          "providerPosition": 6,
+          "blindTag": "G",
+          "grade": 1,
+          "scoreRu": 0.07778341323137283,
+          "scoreEn": 0.05684518814086914
+        },
+        {
+          "id": "d8634cd0-9cc0-4cfc-a3e7-91bd9c998452",
+          "providerPosition": 7,
+          "blindTag": "E",
+          "grade": 0,
+          "scoreRu": 0.03951342776417732,
+          "scoreEn": 0.005657854489982128
+        },
+        {
+          "id": "2c67cfeb-36a6-4acc-ae09-1e516a74dd34",
+          "providerPosition": 8,
+          "blindTag": "B",
+          "grade": 3,
+          "scoreRu": 0.14013203978538513,
+          "scoreEn": 0.12458988279104233
+        },
+        {
+          "id": "fd168475-031d-494c-bef2-0be192d46501",
+          "providerPosition": 9,
+          "blindTag": "F",
+          "grade": 2,
+          "scoreRu": 0.13297507166862488,
+          "scoreEn": 0.09777183830738068
+        },
+        {
+          "id": "943bc1dd-c96c-4fd7-8a09-d57b7f902a35",
+          "providerPosition": 10,
+          "blindTag": "J",
+          "grade": 0,
+          "scoreRu": 0.046611059457063675,
+          "scoreEn": -0.02268676832318306
+        },
+        {
+          "id": "ad15e9fd-106a-4be2-bcab-c3bf9c55061b",
+          "providerPosition": 11,
+          "blindTag": "D",
+          "grade": 2,
+          "scoreRu": 0.12095627933740616,
+          "scoreEn": 0.11839435994625092
+        },
+        {
+          "id": "9b99b390-a5ce-45f5-8229-09217090a5e6",
+          "providerPosition": 12,
+          "blindTag": "I",
+          "grade": 1,
+          "scoreRu": 0.10175428539514542,
+          "scoreEn": 0.07492789626121521
+        }
+      ],
+      "providerOrder": {
+        "ids": [
+          "d33311fe-a91b-429a-9bd0-6e5a88047c8e",
+          "1d77caf3-6ca2-4101-b48a-c40554bfee5a",
+          "8b92f6ce-c413-40d7-b687-d6496c0b4f49",
+          "7f605bb0-49f0-4ed5-99db-902cce4db47a",
+          "1f48a5bb-4785-40f4-bbe6-164a1ece2d5a"
+        ],
+        "grades": [
+          3,
+          2,
+          2,
+          1,
+          2
+        ],
+        "meanRelevanceAt5": 2.0,
+        "precisionAt5": 0.8,
+        "top1Relevance": 3
+      },
+      "siglipRu": {
+        "ids": [
+          "2c67cfeb-36a6-4acc-ae09-1e516a74dd34",
+          "fd168475-031d-494c-bef2-0be192d46501",
+          "1f48a5bb-4785-40f4-bbe6-164a1ece2d5a",
+          "d33311fe-a91b-429a-9bd0-6e5a88047c8e",
+          "1d77caf3-6ca2-4101-b48a-c40554bfee5a"
+        ],
+        "grades": [
+          3,
+          2,
+          2,
+          3,
+          2
+        ],
+        "meanRelevanceAt5": 2.4,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      },
+      "siglipEn": {
+        "ids": [
+          "2c67cfeb-36a6-4acc-ae09-1e516a74dd34",
+          "ad15e9fd-106a-4be2-bcab-c3bf9c55061b",
+          "1d77caf3-6ca2-4101-b48a-c40554bfee5a",
+          "1f48a5bb-4785-40f4-bbe6-164a1ece2d5a",
+          "fd168475-031d-494c-bef2-0be192d46501"
+        ],
+        "grades": [
+          3,
+          2,
+          2,
+          2,
+          2
+        ],
+        "meanRelevanceAt5": 2.2,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      },
+      "siglipBilingualMean": {
+        "ids": [
+          "2c67cfeb-36a6-4acc-ae09-1e516a74dd34",
+          "1f48a5bb-4785-40f4-bbe6-164a1ece2d5a",
+          "ad15e9fd-106a-4be2-bcab-c3bf9c55061b",
+          "1d77caf3-6ca2-4101-b48a-c40554bfee5a",
+          "fd168475-031d-494c-bef2-0be192d46501"
+        ],
+        "grades": [
+          3,
+          2,
+          2,
+          2,
+          2
+        ],
+        "meanRelevanceAt5": 2.2,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      }
+    },
+    {
+      "id": "person",
+      "ru": "владелец малого бизнеса работает за ноутбуком",
+      "en": "small business owner working at a laptop",
+      "providerQuery": "laptop working",
+      "candidateCount": 12,
+      "seconds": 0.6040239580033813,
+      "candidates": [
+        {
+          "id": "7447f84a-6b6d-45db-8d2b-fe88c3d13616",
+          "providerPosition": 1,
+          "blindTag": "B",
+          "grade": 1,
+          "scoreRu": 0.08520275354385376,
+          "scoreEn": 0.06398844718933105
+        },
+        {
+          "id": "3e34d0df-0791-443f-a567-2bca625325ed",
+          "providerPosition": 2,
+          "blindTag": "J",
+          "grade": 0,
+          "scoreRu": 0.047848187386989594,
+          "scoreEn": 0.056708838790655136
+        },
+        {
+          "id": "562a68b5-78dd-4b56-89b0-67901583d0eb",
+          "providerPosition": 3,
+          "blindTag": "C",
+          "grade": 1,
+          "scoreRu": 0.08479423820972443,
+          "scoreEn": 0.08797981590032578
+        },
+        {
+          "id": "cbfc1627-8f04-4752-af05-3c4db101a011",
+          "providerPosition": 4,
+          "blindTag": "G",
+          "grade": 1,
+          "scoreRu": 0.062367018312215805,
+          "scoreEn": 0.04118658974766731
+        },
+        {
+          "id": "6adcab40-54a1-4192-ada8-96968da73762",
+          "providerPosition": 5,
+          "blindTag": "E",
+          "grade": 3,
+          "scoreRu": 0.1164817214012146,
+          "scoreEn": 0.12073834985494614
+        },
+        {
+          "id": "2d1ccdc0-d360-4878-9e0e-d7218272448e",
+          "providerPosition": 6,
+          "blindTag": "D",
+          "grade": 3,
+          "scoreRu": 0.09727346897125244,
+          "scoreEn": 0.10400887578725815
+        },
+        {
+          "id": "5ba8a45a-a095-4c48-9223-2d98b20aa49c",
+          "providerPosition": 7,
+          "blindTag": "L",
+          "grade": 1,
+          "scoreRu": 0.08386910706758499,
+          "scoreEn": 0.04591108486056328
+        },
+        {
+          "id": "67682b9c-035e-4aae-a182-d4cdbd297cfa",
+          "providerPosition": 8,
+          "blindTag": "K",
+          "grade": 3,
+          "scoreRu": 0.13614210486412048,
+          "scoreEn": 0.11426926404237747
+        },
+        {
+          "id": "d52cdd7d-cfd6-4706-b0e5-561ecce21ae3",
+          "providerPosition": 9,
+          "blindTag": "I",
+          "grade": 0,
+          "scoreRu": 0.022362569347023964,
+          "scoreEn": 0.01397059764713049
+        },
+        {
+          "id": "f5f23387-48e0-446e-b249-7cb1e347043e",
+          "providerPosition": 10,
+          "blindTag": "A",
+          "grade": 2,
+          "scoreRu": 0.10394612699747086,
+          "scoreEn": 0.1179487481713295
+        },
+        {
+          "id": "8f40cddf-7969-4a8b-967e-b9bebfbac3af",
+          "providerPosition": 11,
+          "blindTag": "F",
+          "grade": 2,
+          "scoreRu": 0.09579502046108246,
+          "scoreEn": 0.11858660727739334
+        },
+        {
+          "id": "f2404dc5-11f9-4ad4-bead-b29407064887",
+          "providerPosition": 12,
+          "blindTag": "H",
+          "grade": 1,
+          "scoreRu": 0.026543451473116875,
+          "scoreEn": 0.011201063171029091
+        }
+      ],
+      "providerOrder": {
+        "ids": [
+          "7447f84a-6b6d-45db-8d2b-fe88c3d13616",
+          "3e34d0df-0791-443f-a567-2bca625325ed",
+          "562a68b5-78dd-4b56-89b0-67901583d0eb",
+          "cbfc1627-8f04-4752-af05-3c4db101a011",
+          "6adcab40-54a1-4192-ada8-96968da73762"
+        ],
+        "grades": [
+          1,
+          0,
+          1,
+          1,
+          3
+        ],
+        "meanRelevanceAt5": 1.2,
+        "precisionAt5": 0.2,
+        "top1Relevance": 1
+      },
+      "siglipRu": {
+        "ids": [
+          "67682b9c-035e-4aae-a182-d4cdbd297cfa",
+          "6adcab40-54a1-4192-ada8-96968da73762",
+          "f5f23387-48e0-446e-b249-7cb1e347043e",
+          "2d1ccdc0-d360-4878-9e0e-d7218272448e",
+          "8f40cddf-7969-4a8b-967e-b9bebfbac3af"
+        ],
+        "grades": [
+          3,
+          3,
+          2,
+          3,
+          2
+        ],
+        "meanRelevanceAt5": 2.6,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      },
+      "siglipEn": {
+        "ids": [
+          "6adcab40-54a1-4192-ada8-96968da73762",
+          "8f40cddf-7969-4a8b-967e-b9bebfbac3af",
+          "f5f23387-48e0-446e-b249-7cb1e347043e",
+          "67682b9c-035e-4aae-a182-d4cdbd297cfa",
+          "2d1ccdc0-d360-4878-9e0e-d7218272448e"
+        ],
+        "grades": [
+          3,
+          2,
+          2,
+          3,
+          3
+        ],
+        "meanRelevanceAt5": 2.6,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      },
+      "siglipBilingualMean": {
+        "ids": [
+          "67682b9c-035e-4aae-a182-d4cdbd297cfa",
+          "6adcab40-54a1-4192-ada8-96968da73762",
+          "f5f23387-48e0-446e-b249-7cb1e347043e",
+          "8f40cddf-7969-4a8b-967e-b9bebfbac3af",
+          "2d1ccdc0-d360-4878-9e0e-d7218272448e"
+        ],
+        "grades": [
+          3,
+          3,
+          2,
+          2,
+          3
+        ],
+        "meanRelevanceAt5": 2.6,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      }
+    },
+    {
+      "id": "horizontal",
+      "ru": "команда обсуждает проект в офисе",
+      "en": "team discussing a project in an office",
+      "providerQuery": "team meeting",
+      "candidateCount": 12,
+      "seconds": 2.242265832996054,
+      "candidates": [
+        {
+          "id": "98013261-c898-4a07-a80f-7a8aba7982e5",
+          "providerPosition": 1,
+          "blindTag": "H",
+          "grade": 2,
+          "scoreRu": 0.07964649051427841,
+          "scoreEn": 0.09955616295337677
+        },
+        {
+          "id": "2647f71f-f5eb-4145-8e3f-22804aa86531",
+          "providerPosition": 2,
+          "blindTag": "I",
+          "grade": 3,
+          "scoreRu": 0.08044124394655228,
+          "scoreEn": 0.09033996611833572
+        },
+        {
+          "id": "d81aeb0a-41d4-4e92-b469-0c45f1bdac84",
+          "providerPosition": 3,
+          "blindTag": "G",
+          "grade": 0,
+          "scoreRu": 0.008070733398199081,
+          "scoreEn": 0.020559461787343025
+        },
+        {
+          "id": "60d07cfc-45e4-4416-9737-4a446f33bec0",
+          "providerPosition": 4,
+          "blindTag": "D",
+          "grade": 3,
+          "scoreRu": 0.10111316293478012,
+          "scoreEn": 0.11961328983306885
+        },
+        {
+          "id": "be224b0f-9817-49e7-8402-8198f7f4e126",
+          "providerPosition": 5,
+          "blindTag": "B",
+          "grade": 3,
+          "scoreRu": 0.09963926672935486,
+          "scoreEn": 0.12380819022655487
+        },
+        {
+          "id": "99aae217-9652-497a-8a24-f9d05b459cae",
+          "providerPosition": 6,
+          "blindTag": "K",
+          "grade": 3,
+          "scoreRu": 0.08176949620246887,
+          "scoreEn": 0.10272753983736038
+        },
+        {
+          "id": "a61383c7-00cb-4333-a2c8-f8fcc138222e",
+          "providerPosition": 7,
+          "blindTag": "C",
+          "grade": 0,
+          "scoreRu": -0.013344368897378445,
+          "scoreEn": -0.018705714493989944
+        },
+        {
+          "id": "47a7eabb-60b1-41ed-ae63-43211b4e07f8",
+          "providerPosition": 8,
+          "blindTag": "A",
+          "grade": 3,
+          "scoreRu": 0.11512444168329239,
+          "scoreEn": 0.11936092376708984
+        },
+        {
+          "id": "73e04e43-5c30-41f2-b1f3-bdf8200e7695",
+          "providerPosition": 9,
+          "blindTag": "J",
+          "grade": 0,
+          "scoreRu": -0.0028436959255486727,
+          "scoreEn": 0.020186007022857666
+        },
+        {
+          "id": "b85faa62-cf30-404b-aecf-4180401ddc5b",
+          "providerPosition": 10,
+          "blindTag": "E",
+          "grade": 0,
+          "scoreRu": -0.03145137429237366,
+          "scoreEn": -0.011715528555214405
+        },
+        {
+          "id": "a82533c5-1400-45d3-86f0-5ad7a7306bdd",
+          "providerPosition": 11,
+          "blindTag": "L",
+          "grade": 3,
+          "scoreRu": 0.08672434836626053,
+          "scoreEn": 0.12212852388620377
+        },
+        {
+          "id": "e8e99c76-2b91-474e-872c-adabae492c48",
+          "providerPosition": 12,
+          "blindTag": "F",
+          "grade": 2,
+          "scoreRu": 0.06177397072315216,
+          "scoreEn": 0.09566587954759598
+        }
+      ],
+      "providerOrder": {
+        "ids": [
+          "98013261-c898-4a07-a80f-7a8aba7982e5",
+          "2647f71f-f5eb-4145-8e3f-22804aa86531",
+          "d81aeb0a-41d4-4e92-b469-0c45f1bdac84",
+          "60d07cfc-45e4-4416-9737-4a446f33bec0",
+          "be224b0f-9817-49e7-8402-8198f7f4e126"
+        ],
+        "grades": [
+          2,
+          3,
+          0,
+          3,
+          3
+        ],
+        "meanRelevanceAt5": 2.2,
+        "precisionAt5": 0.8,
+        "top1Relevance": 2
+      },
+      "siglipRu": {
+        "ids": [
+          "47a7eabb-60b1-41ed-ae63-43211b4e07f8",
+          "60d07cfc-45e4-4416-9737-4a446f33bec0",
+          "be224b0f-9817-49e7-8402-8198f7f4e126",
+          "a82533c5-1400-45d3-86f0-5ad7a7306bdd",
+          "99aae217-9652-497a-8a24-f9d05b459cae"
+        ],
+        "grades": [
+          3,
+          3,
+          3,
+          3,
+          3
+        ],
+        "meanRelevanceAt5": 3.0,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      },
+      "siglipEn": {
+        "ids": [
+          "be224b0f-9817-49e7-8402-8198f7f4e126",
+          "a82533c5-1400-45d3-86f0-5ad7a7306bdd",
+          "60d07cfc-45e4-4416-9737-4a446f33bec0",
+          "47a7eabb-60b1-41ed-ae63-43211b4e07f8",
+          "99aae217-9652-497a-8a24-f9d05b459cae"
+        ],
+        "grades": [
+          3,
+          3,
+          3,
+          3,
+          3
+        ],
+        "meanRelevanceAt5": 3.0,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      },
+      "siglipBilingualMean": {
+        "ids": [
+          "47a7eabb-60b1-41ed-ae63-43211b4e07f8",
+          "be224b0f-9817-49e7-8402-8198f7f4e126",
+          "60d07cfc-45e4-4416-9737-4a446f33bec0",
+          "a82533c5-1400-45d3-86f0-5ad7a7306bdd",
+          "99aae217-9652-497a-8a24-f9d05b459cae"
+        ],
+        "grades": [
+          3,
+          3,
+          3,
+          3,
+          3
+        ],
+        "meanRelevanceAt5": 3.0,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      }
+    },
+    {
+      "id": "no-people",
+      "ru": "серверная стойка с мигающими индикаторами без людей",
+      "en": "server rack with blinking indicator lights and no people",
+      "providerQuery": "server rack",
+      "candidateCount": 12,
+      "seconds": 0.5182683750026627,
+      "candidates": [
+        {
+          "id": "c4e920a7-f761-442f-ae51-d380c8fa26d5",
+          "providerPosition": 1,
+          "blindTag": "I",
+          "grade": 1,
+          "scoreRu": 0.08736588805913925,
+          "scoreEn": 0.07933880388736725
+        },
+        {
+          "id": "c28b5999-ea14-4b83-ace1-aa2e496803a7",
+          "providerPosition": 2,
+          "blindTag": "A",
+          "grade": 2,
+          "scoreRu": 0.07366937398910522,
+          "scoreEn": 0.04512526094913483
+        },
+        {
+          "id": "a803af62-8bff-4fd0-b034-e8b85db849f0",
+          "providerPosition": 3,
+          "blindTag": "F",
+          "grade": 2,
+          "scoreRu": 0.10298947244882584,
+          "scoreEn": 0.08324933797121048
+        },
+        {
+          "id": "cc1c5aeb-587e-4421-9ac7-16dea8f2a24b",
+          "providerPosition": 4,
+          "blindTag": "D",
+          "grade": 3,
+          "scoreRu": 0.12465062737464905,
+          "scoreEn": 0.11862044036388397
+        },
+        {
+          "id": "46feb009-41da-4b27-862a-7d2114c8d7b0",
+          "providerPosition": 5,
+          "blindTag": "H",
+          "grade": 2,
+          "scoreRu": 0.10006888955831528,
+          "scoreEn": 0.08052539825439453
+        },
+        {
+          "id": "37f5f00e-1db3-4864-a3b0-470f5f63eca0",
+          "providerPosition": 6,
+          "blindTag": "K",
+          "grade": 2,
+          "scoreRu": 0.11123625934123993,
+          "scoreEn": 0.11046420782804489
+        },
+        {
+          "id": "678a1607-46c9-43fc-976b-d5a35ab99ecd",
+          "providerPosition": 7,
+          "blindTag": "C",
+          "grade": 2,
+          "scoreRu": 0.09956943988800049,
+          "scoreEn": 0.04464453086256981
+        },
+        {
+          "id": "3584c562-6519-4e5a-b24b-25601ec6f6f2",
+          "providerPosition": 8,
+          "blindTag": "E",
+          "grade": 0,
+          "scoreRu": 0.07812496274709702,
+          "scoreEn": 0.03368402272462845
+        },
+        {
+          "id": "92991656-7d8d-4de4-90e6-51241ad16107",
+          "providerPosition": 9,
+          "blindTag": "L",
+          "grade": 2,
+          "scoreRu": 0.061570905148983,
+          "scoreEn": 0.03656275197863579
+        },
+        {
+          "id": "20f7a228-b961-4a42-9ee3-1f88b0f7422f",
+          "providerPosition": 10,
+          "blindTag": "J",
+          "grade": 1,
+          "scoreRu": 0.07486094534397125,
+          "scoreEn": 0.05272838473320007
+        },
+        {
+          "id": "2ab98317-242d-4f7c-8794-6eb30cb583d8",
+          "providerPosition": 11,
+          "blindTag": "G",
+          "grade": 1,
+          "scoreRu": -0.009732640348374844,
+          "scoreEn": -0.04026901721954346
+        },
+        {
+          "id": "747bb2d9-eb7c-41a9-bc3f-e83aa588ea68",
+          "providerPosition": 12,
+          "blindTag": "B",
+          "grade": 1,
+          "scoreRu": 0.0351564846932888,
+          "scoreEn": -0.012363655492663383
+        }
+      ],
+      "providerOrder": {
+        "ids": [
+          "c4e920a7-f761-442f-ae51-d380c8fa26d5",
+          "c28b5999-ea14-4b83-ace1-aa2e496803a7",
+          "a803af62-8bff-4fd0-b034-e8b85db849f0",
+          "cc1c5aeb-587e-4421-9ac7-16dea8f2a24b",
+          "46feb009-41da-4b27-862a-7d2114c8d7b0"
+        ],
+        "grades": [
+          1,
+          2,
+          2,
+          3,
+          2
+        ],
+        "meanRelevanceAt5": 2.0,
+        "precisionAt5": 0.8,
+        "top1Relevance": 1
+      },
+      "siglipRu": {
+        "ids": [
+          "cc1c5aeb-587e-4421-9ac7-16dea8f2a24b",
+          "37f5f00e-1db3-4864-a3b0-470f5f63eca0",
+          "a803af62-8bff-4fd0-b034-e8b85db849f0",
+          "46feb009-41da-4b27-862a-7d2114c8d7b0",
+          "678a1607-46c9-43fc-976b-d5a35ab99ecd"
+        ],
+        "grades": [
+          3,
+          2,
+          2,
+          2,
+          2
+        ],
+        "meanRelevanceAt5": 2.2,
+        "precisionAt5": 1.0,
+        "top1Relevance": 3
+      },
+      "siglipEn": {
+        "ids": [
+          "cc1c5aeb-587e-4421-9ac7-16dea8f2a24b",
+          "37f5f00e-1db3-4864-a3b0-470f5f63eca0",
+          "a803af62-8bff-4fd0-b034-e8b85db849f0",
+          "46feb009-41da-4b27-862a-7d2114c8d7b0",
+          "c4e920a7-f761-442f-ae51-d380c8fa26d5"
+        ],
+        "grades": [
+          3,
+          2,
+          2,
+          2,
+          1
+        ],
+        "meanRelevanceAt5": 2.0,
+        "precisionAt5": 0.8,
+        "top1Relevance": 3
+      },
+      "siglipBilingualMean": {
+        "ids": [
+          "cc1c5aeb-587e-4421-9ac7-16dea8f2a24b",
+          "37f5f00e-1db3-4864-a3b0-470f5f63eca0",
+          "a803af62-8bff-4fd0-b034-e8b85db849f0",
+          "46feb009-41da-4b27-862a-7d2114c8d7b0",
+          "c4e920a7-f761-442f-ae51-d380c8fa26d5"
+        ],
+        "grades": [
+          3,
+          2,
+          2,
+          2,
+          1
+        ],
+        "meanRelevanceAt5": 2.0,
+        "precisionAt5": 0.8,
+        "top1Relevance": 3
+      }
+    },
+    {
+      "id": "abstract",
+      "ru": "рост бизнеса благодаря автоматизации рутинных процессов",
+      "en": "business growth through automation of routine processes",
+      "providerQuery": "business automation",
+      "candidateCount": 9,
+      "seconds": 0.4180804579955293,
+      "candidates": [
+        {
+          "id": "84d94243-4e09-4b68-bb17-441accb4de65",
+          "providerPosition": 1,
+          "blindTag": "I",
+          "grade": 1,
+          "scoreRu": 0.05461021885275841,
+          "scoreEn": 0.04959815368056297
+        },
+        {
+          "id": "70081c8b-3f3d-4183-ad44-5f646e105e17",
+          "providerPosition": 2,
+          "blindTag": "G",
+          "grade": 1,
+          "scoreRu": 0.08137495070695877,
+          "scoreEn": 0.07800227403640747
+        },
+        {
+          "id": "284ee286-e3eb-48bb-8589-468ad5b47793",
+          "providerPosition": 3,
+          "blindTag": "A",
+          "grade": 2,
+          "scoreRu": 0.09330029785633087,
+          "scoreEn": 0.07818172127008438
+        },
+        {
+          "id": "386f82ed-ddf5-4538-b259-23d4de5e51ca",
+          "providerPosition": 4,
+          "blindTag": "C",
+          "grade": 1,
+          "scoreRu": 0.06362899392843246,
+          "scoreEn": 0.049477383494377136
+        },
+        {
+          "id": "89ac9d15-9653-44f9-a08c-633e5c80bb41",
+          "providerPosition": 5,
+          "blindTag": "D",
+          "grade": 2,
+          "scoreRu": 0.0846230760216713,
+          "scoreEn": 0.0727756917476654
+        },
+        {
+          "id": "878b6887-a64f-442a-8756-e1e7b996f1d1",
+          "providerPosition": 6,
+          "blindTag": "F",
+          "grade": 2,
+          "scoreRu": 0.10521590709686279,
+          "scoreEn": 0.09754416346549988
+        },
+        {
+          "id": "011b6419-2991-452c-874a-95c197b73893",
+          "providerPosition": 7,
+          "blindTag": "H",
+          "grade": 1,
+          "scoreRu": 0.06025812402367592,
+          "scoreEn": 0.051088690757751465
+        },
+        {
+          "id": "9888806e-6446-4ed6-8d33-0c315b3ed6da",
+          "providerPosition": 8,
+          "blindTag": "E",
+          "grade": 0,
+          "scoreRu": 0.014443171210587025,
+          "scoreEn": 0.026155857369303703
+        },
+        {
+          "id": "8acdfdc4-51ae-44b5-a406-7acc97008f5b",
+          "providerPosition": 9,
+          "blindTag": "B",
+          "grade": 2,
+          "scoreRu": 0.10571892559528351,
+          "scoreEn": 0.0957481786608696
+        }
+      ],
+      "providerOrder": {
+        "ids": [
+          "84d94243-4e09-4b68-bb17-441accb4de65",
+          "70081c8b-3f3d-4183-ad44-5f646e105e17",
+          "284ee286-e3eb-48bb-8589-468ad5b47793",
+          "386f82ed-ddf5-4538-b259-23d4de5e51ca",
+          "89ac9d15-9653-44f9-a08c-633e5c80bb41"
+        ],
+        "grades": [
+          1,
+          1,
+          2,
+          1,
+          2
+        ],
+        "meanRelevanceAt5": 1.4,
+        "precisionAt5": 0.4,
+        "top1Relevance": 1
+      },
+      "siglipRu": {
+        "ids": [
+          "8acdfdc4-51ae-44b5-a406-7acc97008f5b",
+          "878b6887-a64f-442a-8756-e1e7b996f1d1",
+          "284ee286-e3eb-48bb-8589-468ad5b47793",
+          "89ac9d15-9653-44f9-a08c-633e5c80bb41",
+          "70081c8b-3f3d-4183-ad44-5f646e105e17"
+        ],
+        "grades": [
+          2,
+          2,
+          2,
+          2,
+          1
+        ],
+        "meanRelevanceAt5": 1.8,
+        "precisionAt5": 0.8,
+        "top1Relevance": 2
+      },
+      "siglipEn": {
+        "ids": [
+          "878b6887-a64f-442a-8756-e1e7b996f1d1",
+          "8acdfdc4-51ae-44b5-a406-7acc97008f5b",
+          "284ee286-e3eb-48bb-8589-468ad5b47793",
+          "70081c8b-3f3d-4183-ad44-5f646e105e17",
+          "89ac9d15-9653-44f9-a08c-633e5c80bb41"
+        ],
+        "grades": [
+          2,
+          2,
+          2,
+          1,
+          2
+        ],
+        "meanRelevanceAt5": 1.8,
+        "precisionAt5": 0.8,
+        "top1Relevance": 2
+      },
+      "siglipBilingualMean": {
+        "ids": [
+          "878b6887-a64f-442a-8756-e1e7b996f1d1",
+          "8acdfdc4-51ae-44b5-a406-7acc97008f5b",
+          "284ee286-e3eb-48bb-8589-468ad5b47793",
+          "70081c8b-3f3d-4183-ad44-5f646e105e17",
+          "89ac9d15-9653-44f9-a08c-633e5c80bb41"
+        ],
+        "grades": [
+          2,
+          2,
+          2,
+          1,
+          2
+        ],
+        "meanRelevanceAt5": 1.8,
+        "precisionAt5": 0.8,
+        "top1Relevance": 2
+      }
+    }
+  ],
+  "totalSeconds": 19.12580354200327,
+  "peakRssBytes": 3331211264,
+  "parameterCount": 375187970,
+  "macroMetrics": {
+    "providerOrder": {
+      "meanRelevanceAt5": 1.7600000000000002,
+      "precisionAt5": 0.6,
+      "top1Relevance": 1.6
+    },
+    "siglipRu": {
+      "meanRelevanceAt5": 2.4,
+      "precisionAt5": 0.96,
+      "top1Relevance": 2.8
+    },
+    "siglipEn": {
+      "meanRelevanceAt5": 2.32,
+      "precisionAt5": 0.9199999999999999,
+      "top1Relevance": 2.8
+    },
+    "siglipBilingualMean": {
+      "meanRelevanceAt5": 2.32,
+      "precisionAt5": 0.9199999999999999,
+      "top1Relevance": 2.8
+    }
+  }
+}

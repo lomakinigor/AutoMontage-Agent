@@ -1,0 +1,44 @@
+{
+  "modelId": "timm/ViT-B-16-SigLIP2",
+  "revision": "eee10eff6dd8cabae2d7f379d4e8cfcd352030aa",
+  "license": "Apache-2.0",
+  "codeLicense": "MIT (OpenCLIP 3.3.0)",
+  "files": [
+    {
+      "file": "README.md",
+      "bytes": 3012,
+      "sha256": "46ea025f4a4f2930e75fb9528a8b709bb034501954000dfc152acd7a02e188a4",
+      "url": "https://huggingface.co/timm/ViT-B-16-SigLIP2/resolve/eee10eff6dd8cabae2d7f379d4e8cfcd352030aa/README.md"
+    },
+    {
+      "file": "open_clip_config.json",
+      "bytes": 944,
+      "sha256": "d0b2ac6d4524cb95287138b9e5fa345211be7242e5da7eb55be894614be33987",
+      "url": "https://huggingface.co/timm/ViT-B-16-SigLIP2/resolve/eee10eff6dd8cabae2d7f379d4e8cfcd352030aa/open_clip_config.json"
+    },
+    {
+      "file": "open_clip_model.safetensors",
+      "bytes": 1500786832,
+      "sha256": "d0a51069d2fa6c95b371b3bffd2a2c765c1815004798ee99f075290dbca73041",
+      "url": "https://huggingface.co/timm/ViT-B-16-SigLIP2/resolve/eee10eff6dd8cabae2d7f379d4e8cfcd352030aa/open_clip_model.safetensors"
+    },
+    {
+      "file": "special_tokens_map.json",
+      "bytes": 327,
+      "sha256": "d4671afd8f9b1ccd170443bd5478c0cc40fdbddc9343034caf6984ffd388b2c4",
+      "url": "https://huggingface.co/timm/ViT-B-16-SigLIP2/resolve/eee10eff6dd8cabae2d7f379d4e8cfcd352030aa/special_tokens_map.json"
+    },
+    {
+      "file": "tokenizer.json",
+      "bytes": 34362885,
+      "sha256": "220c63d496e0c14e63eb656c91e0215e926202e4c74b1f089e09f1920d779b04",
+      "url": "https://huggingface.co/timm/ViT-B-16-SigLIP2/resolve/eee10eff6dd8cabae2d7f379d4e8cfcd352030aa/tokenizer.json"
+    },
+    {
+      "file": "tokenizer_config.json",
+      "bytes": 46382,
+      "sha256": "513e778583a9ac0b74ae47784216f9d654d5132eee62d777597f5e842701323c",
+      "url": "https://huggingface.co/timm/ViT-B-16-SigLIP2/resolve/eee10eff6dd8cabae2d7f379d4e8cfcd352030aa/tokenizer_config.json"
+    }
+  ]
+}
