@@ -191,8 +191,8 @@ Task 7 evidence: `e90ee58`; 258 focused tests pass. Genuine pending-placeholder 
 - [x] Configure CI to run new Node tests automatically, both browser specs and real-media dependencies; verify no paid/live provider calls in CI.
 - [x] Reproduce Remotion dotenv leakage with a synthetic secret in a temporary fixture project, then prove the installed CLI environment loader excludes it with explicit safe env selection. Test all command builders and provider-key stripping in child spawn options; rerun actual preview/final acceptance after the command change.
 - [x] Independent task compliance/quality and branch security review (scope and limitation recorded below). Fix actionable findings with regression tests; rerun affected tests.
-- [ ] Run `npm test`, `npm run doctor`, `npm run demo`, `npm run test:review-ui`, available package checks, `npm pack --dry-run`, privacy checks, Gitleaks and precommit hook. Capture exact passed/failed/skipped and reasons; no claimed success from exit code alone.
-- [ ] Check diff against base for credentials, personal absolute paths, media and .env. Mark completed steps with evidence, commit documentation logically, leave clean branch/worktree intact, open branch review. Do not push.
+- [x] Run `npm test`, `npm run doctor`, `npm run demo`, `npm run test:review-ui`, available package checks, `npm pack --dry-run`, privacy checks, Gitleaks and precommit hook. Capture exact passed/failed/skipped and reasons; no claimed success from exit code alone.
+- [x] Check diff against base for credentials, personal absolute paths, media and .env. Mark completed steps with evidence, commit documentation logically, leave clean branch/worktree intact, request branch review in Codex. Do not push.
 
 Task 8 benchmark evidence: `cb418e3`; 16 stdlib-only tests pass after independent duplicate-label validation review. Two offline CPU reruns on 57 local thumbnails reproduce every score and rank exactly; public text artifacts and pinned recovery instructions are committed without images or model weights. Live acceptance v3 wiring: `28926cd`, 19 focused tests pass and independent review passes.
 
@@ -217,3 +217,37 @@ All spec areas have tasks. New approved policy/receipt applies only discovery wo
 Independent spec/code-quality review passes, including the final `e90ee58` receipt/provenance/common-barrier changes. Component-level transport/provider/import/UI security reviews passed. A fresh broader independent security audit confirmed two approval issues, then its turn was stopped by the platform automatic cybersecurity content filter; that blocked probing was not retried. The confirmed v3-marker and late-hash findings were fixed with regressions and reviewed by the main agent; a subsequent independent code-only correctness review passed. Do not describe the interrupted broader audit as a completed independent security sign-off. Root verification covers the implemented security contracts through the full regression suite and ordinary code inspection.
 
 Current local acceptance: full Node 1009 pass/0 fail/3 dedicated-render skips; complete Playwright 56 pass/0 fail/0 skip; the three dedicated real-render E2Es pass separately with 0 skips. Pexels live acceptance remains `SKIPPED: PEXELS_API_KEY is not configured`. No live Pexels search is claimed.
+
+## Final verification record
+
+All media commands used a working full FFmpeg 9.0.1 selected through PATH and AUTOMONTAGE_FFMPEG_DIR. Node 24.11.1, local Tesseract 5.5.3 with eng, Playwright Chromium. No separate lint/typecheck script exists in package.json; the actual Remotion renders verify the build path.
+
+| Command / scope | Passed | Failed | Skipped / notes |
+|---|---:|---:|---|
+| Initial `npm test`, broken FFmpeg environment | 832 | 3 | 8; missing libx265 dynamic library, corrected by reinstalling full FFmpeg |
+| Healthy baseline `npm test` | 849 | 0 | 2 dedicated actual-render tests |
+| Intermediate integrated `npm test` | 1002 | 1 | 3; old model fixture lacked new stale=false field, updated and rerun |
+| Final `npm test` | 1009 | 0 | 3 dedicated actual-render tests, all run successfully below |
+| `node --test tests/review-media-import.test.js` | 79 | 0 | 0; actual JPEG upload.bin, true WebM and renamed-WebM negative included |
+| Task 7 twelve-file gate/schema/CAS command | 258 | 0 | 0; exact command below |
+| `node --test tests/broll-pexels.test.js tests/broll-candidates.test.js tests/broll-provenance.test.js` | 16 | 0 | 0 |
+| `node --test tests/broll-render-env-security.test.js tests/env.test.js` | 16 | 0 | 0; installed CLI and packaged shell preview |
+| `node --test tests/broll-benchmark.test.js` | 16 | 0 | 0; two actual offline model reruns reproduced all scores |
+| `npm run test:review-ui` | 56 | 0 | 0; legacy imports and new candidate shelf |
+| `node --test --test-concurrency=1 tests/broll-preview-e2e.test.js tests/video-broll-e2e.test.js tests/custom-face-media-real.test.js` | 3 | 0 | 0; actual Remotion and complete decode |
+| `npm run doctor` | 8 OK | 0 | 2 warnings: faster-whisper absent; system Chromium for optional shot scripts absent |
+| `npm run demo` and `ffmpeg -v error -i out/demo.mp4 -f null -` | pass | 0 | 0; 1080x1920, 14 seconds |
+| `npm run check:release` | pass | 0 | 0 |
+| `npm pack --dry-run --json` | pass | 0 | 300 entries; safe public env file included; no private work data |
+| `npm run check:privacy` and staged pre-commit check | pass | 0 | no private paths, real env files or new binary media |
+| `gitleaks git --no-banner --redact=100 --log-opts=--all` | pass | 0 | 202 commits at code freeze; subsequent documentation commits scanned by the hook |
+| `npm audit --audit-level=high --json` | pass | 0 high/critical | 5 existing moderate findings documented in SECURITY.md |
+| `node scripts/broll/live-acceptance.js` | — | 0 | `SKIPPED: PEXELS_API_KEY is not configured` |
+
+Task 7 command:
+
+```sh
+node --test tests/broll-preview-approval.test.js tests/lesson-preview.test.js tests/project-workspace.test.js tests/broll-intent.test.js tests/project-mutation.test.js tests/review-server-security.test.js tests/review-draft-save.test.js tests/broll-approval.test.js tests/broll-review-security.test.js tests/review-commands.test.js tests/review-diff.test.js tests/review-model.test.js
+```
+
+Final Git audit: origin/main remains 0e8c5b3; original checkout and both research files are unchanged. Feature branch contains no added binary media or real env file. CI installs full media/OCR dependencies, runs both browser specs and the three real E2Es sequentially. No push, remote CI run, deployment, version bump, tag or paid API call was performed. Branch review was queued in Codex; the separate worktree is retained for the owner's review and later explicit push.
