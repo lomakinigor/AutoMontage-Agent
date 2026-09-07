@@ -1,5 +1,6 @@
 import { formatTime, renderTimeline } from './timeline.js';
 import { createMediaImporter } from './media-import.js';
+import { createBrollDiscoveryUI } from './broll-discovery.js';
 
 function takeSessionToken() {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -361,6 +362,7 @@ function createEditor(initialState, token) {
   let pending = false;
   let saving = false;
   let importing = false;
+  let discovering = false;
   let invalid = false;
   let conflict = false;
   let conflictFreshStateReady = false;
@@ -382,8 +384,31 @@ function createEditor(initialState, token) {
   const controls = createEditControls();
   document.querySelector('.mode-badge').textContent = 'Редактирование';
 
+  const discovery = createBrollDiscoveryUI({
+    getState: () => state,
+    mediaUrl: (pathname) => authenticatedMediaUrl(pathname, token),
+    queueCommand: dispatch,
+    setBusy: (busy) => { discovering = busy; renderAll(); },
+    request: async (pathname, payload) => {
+      const response = await fetch(pathname, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw Object.assign(new Error('B-roll request failed'), { status: response.status, code: data.error });
+      return data;
+    },
+    refresh: async (latest) => {
+      if (!sameSessionIdentity(state, latest)) {
+        throw Object.assign(new Error('B-roll state changed'), { status: 409 });
+      }
+      state = prepareBrowserState(latest, token);
+    },
+    reportError: async () => classifyMutation409({ expectedState: sessionIdentitySnapshot(), generation: ++validationGeneration }),
+  });
+
   function mutationLocked() {
-    return pending || saving || importing || conflict || transientServerBusy;
+    return pending || saving || importing || discovering || conflict || transientServerBusy;
   }
 
   function allControlsLocked() {
@@ -574,7 +599,7 @@ function createEditor(initialState, token) {
       controls.broll.append(element('p', 'broll-empty', 'Подходящих сцен нет'));
       return;
     }
-    eligible.forEach(({ index }) => {
+    eligible.forEach(({ index, scene }) => {
       const wrapper = element('div', 'broll-field');
       wrapper.dataset.brollScene = String(index);
       const label = element('label', 'broll-asset-label');
@@ -601,6 +626,18 @@ function createEditor(initialState, token) {
         ? state.assets.find((candidate) => candidate.id === selected.assetId)
         : null;
       renderSelectedMediaControls(wrapper, index, selected, asset);
+      const projectedScene = structuredClone(scene);
+      let acknowledged = scene.brollReview === true;
+      for (const command of commands) {
+        if (command.sceneIndex !== index) continue;
+        if (command.type === 'set-broll-query' && projectedScene.brollIntent) {
+          projectedScene.brollIntent.queryOriginal = command.queryOriginal;
+          projectedScene.brollIntent.queryEnglish = command.queryEnglish;
+        }
+        if (command.type === 'replace-broll') acknowledged = false;
+        if (command.type === 'allow-broll-text') acknowledged = command.allowEmbeddedText;
+      }
+      wrapper.append(discovery.render({ index, scene: projectedScene, locked: allControlsLocked(), asset, acknowledged }));
       controls.broll.append(wrapper);
     });
     if (focusBroll && !allControlsLocked()) {
