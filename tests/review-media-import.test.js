@@ -1150,16 +1150,17 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
   const hasWebpEncoder = ffmpegEncoderAvailable('libwebp');
   const hasAv1Encoder = ffmpegEncoderAvailable('libaom-av1');
   const cases = [
-    ['tiny.avif', files.avif, 'image/avif', 'image', 'av1'],
-    ['tiny.jpg', files.jpeg, 'image/jpeg', 'image'],
-    ['animated.gif', files.animatedGif, 'image/gif', 'image'],
-    ['transparent.png', files.transparentPng, 'image/png', 'image'],
-    ['silent.mp4', files.silentLandscape, 'video/mp4', 'video'],
-    ['audio.mp4', files.audioPortrait, 'video/mp4', 'video'],
-    ['rotated-vfr.mov', files.rotatedVfr, 'video/quicktime', 'video'],
+    ['tiny.avif', 'tiny.avif', files.avif, 'image/avif', 'image', 'av1'],
+    ['real JPEG survives quarantine upload.bin', 'tiny.jpg', files.jpeg, 'image/jpeg', 'image'],
+    ['animated.gif', 'animated.gif', files.animatedGif, 'image/gif', 'image'],
+    ['transparent.png', 'transparent.png', files.transparentPng, 'image/png', 'image'],
+    ['silent.mp4', 'silent.mp4', files.silentLandscape, 'video/mp4', 'video'],
+    ['audio.mp4', 'audio.mp4', files.audioPortrait, 'video/mp4', 'video'],
+    ['rotated-vfr.mov', 'rotated-vfr.mov', files.rotatedVfr, 'video/quicktime', 'video'],
+    ['real WebM normalizes master and preview', 'vp8-opus.webm', files.webm, 'video/webm', 'video'],
   ];
-  for (const [filename, sourcePath, mime, kind, requirement] of cases) {
-    await t.test(filename, async (subtest) => {
+  for (const [name, filename, sourcePath, mime, kind, requirement] of cases) {
+    await t.test(name, async (subtest) => {
       if (requirement === 'av1' && !hasAv1Encoder) {
         subtest.skip('ffmpeg libaom-av1 encoder is unavailable; real AVIF fixture cannot be generated');
         return;
@@ -1176,6 +1177,12 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
         randomId: () => crypto.randomUUID(), runMediaProcessImpl: runMediaProcess,
       });
       assert.equal(result.mediaKind, kind);
+      const metadata = JSON.parse(fs.readFileSync(
+        path.join(path.dirname(result.filePath), 'asset.json'),
+        'utf8',
+      ));
+      assert.equal(metadata.mediaKind, kind);
+      assert.match(metadata.canonicalSha256, /^[a-f0-9]{64}$/);
       const decode = spawnSync('ffmpeg', ['-v', 'error', '-i', result.filePath, '-f', 'null', '-'], { encoding: 'utf8' });
       assert.equal(decode.status, 0, decode.stderr);
       if (filename === 'animated.gif') {
@@ -1203,7 +1210,7 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
         assert.ok(Number(proxyVideo.avg_frame_rate.split('/')[0]) / Number(proxyVideo.avg_frame_rate.split('/')[1]) <= 30);
         const masterAudio = master.streams.find((stream) => stream.codec_type === 'audio');
         const proxyAudio = proxy.streams.find((stream) => stream.codec_type === 'audio');
-        if (filename !== 'audio.mp4') {
+        if (!['audio.mp4', 'vp8-opus.webm'].includes(filename)) {
           assert.equal(masterAudio, undefined);
           assert.equal(proxyAudio, undefined);
         } else {
@@ -1231,6 +1238,16 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
     await assert.rejects(importReviewMedia({
       request: fs.createReadStream(files.renamedAv1Avif), projectDir, outputFps: 25,
       headers: rawHeaders('renamed-av1-video.avif', 'image/avif', bytes),
+      controller: createImportController(), randomId: () => crypto.randomUUID(),
+      runMediaProcessImpl: runMediaProcess,
+    }), (error) => error.status === 422 && error.code === 'MEDIA_IMPORT_CONTENT_MISMATCH');
+  });
+  await t.test('renamed WebM video is rejected as JPEG', async () => {
+    const projectDir = tempProject(t);
+    const bytes = fs.statSync(files.webm).size;
+    await assert.rejects(importReviewMedia({
+      request: fs.createReadStream(files.webm), projectDir, outputFps: 25,
+      headers: rawHeaders('renamed-video.jpg', 'image/jpeg', bytes),
       controller: createImportController(), randomId: () => crypto.randomUUID(),
       runMediaProcessImpl: runMediaProcess,
     }), (error) => error.status === 422 && error.code === 'MEDIA_IMPORT_CONTENT_MISMATCH');
