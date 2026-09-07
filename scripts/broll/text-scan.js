@@ -10,7 +10,7 @@ const ENGINE = 'tesseract';
 
 function normalizeText(value) {
   const normalized = String(value || '').normalize('NFKC')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(/[\p{Cc}\p{Cf}]/gu, ' ')
     .replace(/\s+/g, ' ').trim();
   const bytes = Buffer.from(normalized);
   return bytes.length <= TEXT_MAX_BYTES

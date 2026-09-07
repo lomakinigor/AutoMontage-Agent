@@ -137,6 +137,11 @@ test('metadata v3 roundtrips immutable provenance and text evidence', () => {
       textScan: { ...current.textScan, text: 'bad\ntext' },
     }))), expectedId: UUID,
   }), /text scan/);
+  assert.throws(() => parseImportedAssetMetadata({
+    bytes: Buffer.from(JSON.stringify(discoveryMetadata({
+      textScan: { ...current.textScan, text: 'hidden\u200bmark' },
+    }))), expectedId: UUID,
+  }), /text scan/);
 });
 
 test('both asset descriptor paths expose display-safe v3 evidence summaries', (t) => {
@@ -144,11 +149,12 @@ test('both asset descriptor paths expose display-safe v3 evidence summaries', (t
   const bundle = writeBundle(projectDir, { metadataOverrides: discoveryMetadata() });
   const record = inspectImportedAssetBundle({ projectDir, assetDirectory: bundle.mediaDirectory });
   assert.deepEqual(record.provenance, discoveryMetadata().provenance);
+  assert.match(record.scanSha256, /^[a-f0-9]{64}$/);
   const listed = listReviewAssets({ root: projectDir, workspace: { dir: projectDir } });
   assert.equal(listed.length, 1);
   assert.equal(listed[0].provenance.provider, 'pexels');
   assert.equal(listed[0].textScan.status, 'needs-review');
-  assert.match(listed[0].textScan.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(Object.hasOwn(listed[0].textScan, 'sha256'), false);
   assert.equal(JSON.stringify(listed[0]).includes('downloadUrl'), false);
 });
 

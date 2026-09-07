@@ -4,6 +4,7 @@ const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { claimAndRemoveOwnedPath } = require('../project/owned-removal');
 const { validateProvenance } = require('../broll/provenance');
+const { hashTextScan } = require('../broll/text-scan');
 const {
   openReadOnlyFlags,
   privateModeMatches,
@@ -18,6 +19,7 @@ const REQUIRED_KEYS_V3 = [...REQUIRED_KEYS_V2, 'provenance', 'textScan'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const CONTROL = /[\p{Cc}]/u;
+const TEXT_SCAN_CONTROL = /[\p{Cc}\p{Cf}]/u;
 const METADATA_MAX_BYTES = 32 * 1024;
 const HASH_BUFFER_BYTES = 64 * 1024;
 const PUBLICATION_CLAIM_PURPOSE = 'review-media-import-publication';
@@ -254,7 +256,7 @@ function parseImportedAssetMetadata({ bytes, expectedId } = {}) {
       || !isDeepStrictEqual(Object.keys(scan).sort(), ['engine', 'reasons', 'status', 'text'])
       || !['clear', 'needs-review', 'unavailable'].includes(scan.status)
       || typeof scan.text !== 'string' || scan.text !== scan.text.normalize('NFKC')
-      || CONTROL.test(scan.text) || Buffer.byteLength(scan.text, 'utf8') > 4096
+      || TEXT_SCAN_CONTROL.test(scan.text) || Buffer.byteLength(scan.text, 'utf8') > 4096
       || !Array.isArray(scan.reasons) || scan.reasons.length > 8
       || scan.reasons.some((reason) => typeof reason !== 'string'
         || !/^[a-z0-9-]{1,64}$/.test(reason))
@@ -344,6 +346,7 @@ function buildImportedAssetRecord({ projectDir, mediaType, id, verified }) {
     ...(metadata.version === 3 ? {
       provenance: structuredClone(metadata.provenance),
       textScan: structuredClone(metadata.textScan),
+      scanSha256: hashTextScan(metadata.textScan),
     } : {}),
     capabilities: {
       preview: true,
