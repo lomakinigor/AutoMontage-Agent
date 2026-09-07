@@ -52,13 +52,21 @@ function cleanArray(value, limit) {
     .slice(0, limit);
 }
 
-function normalizeBrollIntent(value) {
+function normalizeBrollIntent(value, scene) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const queryOriginal = cleanString(value.queryOriginal);
+  const queryEnglish = cleanString(value.queryEnglish);
+  if (!queryOriginal || !queryEnglish) return null;
+  const heading = cleanString([scene.headCream, scene.headOrange]
+    .map((part) => cleanString(part)).filter(Boolean).join(' '));
+  const spokenText = cleanString(
+    scene.sub || scene.caption || scene.quoteCream || scene.big || scene.statCream || heading,
+  );
   const result = {
-    goal: cleanString(value.goal),
-    sourceText: cleanString(value.sourceText),
-    queryOriginal: cleanString(value.queryOriginal),
-    queryEnglish: cleanString(value.queryEnglish),
+    goal: cleanString(value.goal) || heading || spokenText,
+    sourceText: cleanString(value.sourceText) || spokenText,
+    queryOriginal,
+    queryEnglish,
   };
   if (!Object.values(result).every(Boolean)) return null;
   if (value.semanticDescription) result.semanticDescription = cleanString(value.semanticDescription);
@@ -180,7 +188,7 @@ function normalizeScene(scene, availableBroll) {
     ? structuredClone(scene.brollMedia)
     : null;
   const brollSrc = requestedMedia ? cleanString(requestedMedia.src) : cleanString(scene.brollSrc);
-  const brollIntent = normalizeBrollIntent(scene.brollIntent);
+  const brollIntent = normalizeBrollIntent(scene.brollIntent, scene);
   if ((!brollSrc || !availableBroll.includes(brollSrc)) && !brollIntent) return fallbackSplit(scene);
   const result = {
     ...base,
@@ -262,8 +270,8 @@ function normalizeGeneratedBrief(generated, context) {
 
 function buildSystemPrompt({ maxScenes, availableBroll }) {
   const brollRule = availableBroll.length
-    ? `broll разрешён только с одним из brollSrc: ${availableBroll.join(', ')}`
-    : 'broll не используй: доступных файлов нет.';
+    ? `для готового файла broll разрешён только с одним из brollSrc: ${availableBroll.join(', ')}; без файла используй brollIntent`
+    : 'brollSrc и brollMedia не используй: доступных файлов нет; broll с явным brollIntent разрешён.';
   return `Ты режиссёр обучающего видео. Ты НЕ создаёшь дизайн и НЕ придумываешь новые сцены.
 Выбирай не более ${maxScenes} сцен только из фиксированной библиотеки:
 - fullscreen: короткий заход или связка, поля caption; для текста в свободной части горизонтального кадра variant side-overlay, steps, stepStartsSec;

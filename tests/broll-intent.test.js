@@ -9,7 +9,7 @@ const {
   buildReelScenesProps,
   validateLessonBrief,
 } = require('../scripts/lesson/brief');
-const { normalizeGeneratedBrief } = require('../scripts/gen-brief');
+const { buildSystemPrompt, normalizeGeneratedBrief } = require('../scripts/gen-brief');
 const { applyReviewCommand } = require('../scripts/review/commands');
 const { diffLessonBrief } = require('../scripts/review/diff');
 const { formatBriefMarkdown } = require('../scripts/lesson/brief');
@@ -79,6 +79,42 @@ test('normalizer preserves explicit intent without a local file and marks discov
   assert.equal(brief.brollReviewPolicy, 'preview-required');
 });
 
+test('authoring prompt permits intent-only b-roll when no local files are available', () => {
+  const prompt = buildSystemPrompt({ maxScenes: 4, availableBroll: [] });
+  assert.doesNotMatch(prompt, /broll не используй/u);
+  assert.match(prompt, /brollIntent/u);
+  assert.match(prompt, /queryEnglish/u);
+  assert.match(prompt, /brollSrc.*не используй/u);
+});
+
+test('normalizer derives intent meaning from scene speech only when both queries are explicit', () => {
+  const context = {
+    source: 'input/source.mp4', theme: 'lesson-neutral', title: 'B-ROLL INTENT',
+    output: { aspect: 'horizontal', width: 1920, height: 1080, fps: 25, durationInFrames: 100 },
+    dictionaryCorrections: [], availableBroll: [],
+  };
+  const brief = normalizeGeneratedBrief({ scenes: [{
+    scene: 'broll', start: 0, end: 4,
+    headCream: 'БОЛЬШАЯ', headOrange: 'ЗАДАЧА',
+    sub: 'Я раскладываю большую задачу на маленькие шаги',
+    brollIntent: {
+      queryOriginal: 'человек планирует задачи за ноутбуком',
+      queryEnglish: 'person planning tasks on laptop',
+    },
+  }] }, context);
+  assert.equal(brief.scenes[0].scene, 'broll');
+  assert.equal(brief.scenes[0].brollIntent.goal, 'БОЛЬШАЯ ЗАДАЧА');
+  assert.equal(brief.scenes[0].brollIntent.sourceText, 'Я раскладываю большую задачу на маленькие шаги');
+
+  const missingQuery = normalizeGeneratedBrief({ scenes: [{
+    scene: 'broll', start: 0, end: 4,
+    headCream: 'БОЛЬШАЯ', headOrange: 'ЗАДАЧА', sub: 'Точная речь',
+    brollIntent: { queryOriginal: 'явный запрос' },
+  }] }, context);
+  assert.equal(missingQuery.scenes[0].scene, 'split');
+  assert.equal(missingQuery.scenes[0].brollIntent, undefined);
+});
+
 test('set-broll-query has an exact shape and retains transcript-derived intent fields', () => {
   const before = makeBrief();
   const after = applyReviewCommand({ brief: before, assets: new Map(), fps: 25, command: {
@@ -129,6 +165,13 @@ test('diff permits the discovery policy marker while rejecting arbitrary top-lev
   after.brollReviewPolicy = 'preview-required';
   assert.deepEqual(diffLessonBrief({ before, after }), []);
   after.title = 'CHANGED';
+  assert.throws(() => diffLessonBrief({ before, after }), /unsupported/i);
+});
+
+test('diff rejects intent fields other than the two editable queries', () => {
+  const before = makeBrief();
+  const after = structuredClone(before);
+  after.scenes[0].brollIntent.extra = 'must not cross the allowlist';
   assert.throws(() => diffLessonBrief({ before, after }), /unsupported/i);
 });
 

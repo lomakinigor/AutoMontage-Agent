@@ -123,7 +123,11 @@ function addBrollQueryChanges(before, after, expected, changes) {
       || beforeIntent.goal !== afterIntent.goal
       || beforeIntent.sourceText !== afterIntent.sourceText
       || beforeIntent.semanticDescription !== afterIntent.semanticDescription) unsupportedDiff();
-    expected.scenes[index].brollIntent = deepClone(afterIntent);
+    const expectedIntent = deepClone(beforeIntent);
+    expectedIntent.queryOriginal = afterIntent.queryOriginal;
+    expectedIntent.queryEnglish = afterIntent.queryEnglish;
+    if (!isDeepStrictEqual(expectedIntent, afterIntent)) unsupportedDiff();
+    expected.scenes[index].brollIntent = expectedIntent;
     changes.push({
       kind: 'broll-query', scene: index,
       from: { queryOriginal: beforeIntent.queryOriginal, queryEnglish: beforeIntent.queryEnglish },
