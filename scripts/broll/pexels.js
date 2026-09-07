@@ -8,21 +8,29 @@ const IMAGE_HOSTS = Object.freeze([
 const VIDEO_HOSTS = Object.freeze(['videos.pexels.com', 'player.vimeo.com']);
 const MEDIA_HOSTS = Object.freeze([...IMAGE_HOSTS, ...VIDEO_HOSTS]);
 const PAGE_HOSTS = ['www.pexels.com', 'pexels.com'];
-const bounded = (value, max = 500) =>
-  typeof value === 'string' && value.trim() && value.length <= max;
-function safeUrl(value, hosts, extension) {
+const CONTROL = /[\p{Cc}\p{Cf}]/u;
+function normalizedText(value, maxBytes) {
+  if (typeof value !== 'string' || CONTROL.test(value)) return null;
+  const normalized = value.normalize('NFKC').trim();
+  return normalized && !CONTROL.test(normalized) && Buffer.byteLength(normalized, 'utf8') <= maxBytes
+    ? normalized : null;
+}
+function safeUrl(value, hosts, extension, maxBytes = 2048) {
   try {
+    if (typeof value !== 'string' || CONTROL.test(value) || Buffer.byteLength(value, 'utf8') > maxBytes) return null;
     const url = validateUrl(value, hosts);
-    return !extension || extension.test(url.pathname) ? url.href : null;
+    return Buffer.byteLength(url.href, 'utf8') <= maxBytes && (!extension || extension.test(url.pathname)) ? url.href : null;
   } catch {
     return null;
   }
 }
 function normalizeSearch(input) {
+  const queryEnglish = normalizedText(input?.queryEnglish, 200);
+  const queryOriginal = normalizedText(input?.queryOriginal, 500);
   if (
     !input ||
-    !bounded(input.queryEnglish, 200) ||
-    !bounded(input.queryOriginal, 500) ||
+    !queryEnglish ||
+    !queryOriginal ||
     !['image', 'video'].includes(input.mediaKind) ||
     (input.orientation &&
       !['landscape', 'portrait', 'square'].includes(input.orientation))
@@ -37,8 +45,8 @@ function normalizeSearch(input) {
       throw failure('BROLL_SEARCH_INVALID');
   if (!Number.isInteger(search.page) || search.page < 1 || search.page > 1000)
     throw failure('BROLL_SEARCH_INVALID');
-  search.queryEnglish = search.queryEnglish.trim();
-  search.queryOriginal = search.queryOriginal.trim();
+  search.queryEnglish = queryEnglish;
+  search.queryOriginal = queryOriginal;
   return search;
 }
 function eligible(width, height, search) {
@@ -64,13 +72,14 @@ function eligible(width, height, search) {
 }
 function normalizeCandidate(item, search) {
   if (!Number.isSafeInteger(item?.id) || item.id <= 0) return null;
-  const sourcePage = safeUrl(item.url, PAGE_HOSTS);
+  const sourcePage = safeUrl(item.url, PAGE_HOSTS, undefined, 500);
   const author =
     search.mediaKind === 'image'
       ? { name: item.photographer, url: item.photographer_url }
       : item.user;
-  const authorUrl = safeUrl(author?.url, PAGE_HOSTS);
-  if (!sourcePage || !authorUrl || !bounded(author?.name, 200)) return null;
+  const authorUrl = safeUrl(author?.url, PAGE_HOSTS, undefined, 500);
+  const authorName = normalizedText(author?.name, 300);
+  if (!sourcePage || !authorUrl || !authorName) return null;
   const source = new URL(sourcePage),
     profile = new URL(authorUrl);
   if (
@@ -169,7 +178,7 @@ function normalizeCandidate(item, search) {
     provider: 'pexels',
     providerAssetId: String(item.id),
     sourcePage,
-    author: { name: author.name.trim(), url: authorUrl },
+    author: { name: authorName, url: authorUrl },
     license: { name: 'Pexels License', url: 'https://www.pexels.com/license/' },
     queryOriginal: search.queryOriginal,
     queryEnglish: search.queryEnglish,

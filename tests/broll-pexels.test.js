@@ -161,3 +161,65 @@ test('successful provider payload cannot echo key through metadata', async () =>
   });
   assert.deepEqual((await provider.search(search)).candidates, []);
 });
+
+const { validateProvenance } = require('../scripts/broll/provenance');
+function provenanceOf(candidate) {
+  const keys = ['provider', 'providerAssetId', 'sourcePage', 'author', 'license',
+    'queryOriginal', 'queryEnglish', 'retrievedAt', 'rendition'];
+  return Object.fromEntries(keys.map(key => [key, candidate[key]]));
+}
+function fixtureProvider(override = {}) {
+  return createPexelsProvider({apiKey: 'fixture-api-secret', request: async () => ({
+    bytes: Buffer.from(JSON.stringify({photos: [{...photo, ...override}]})),
+  })});
+}
+test('provider emits NFKC Unicode metadata accepted by provenance contract', async () => {
+  const { candidates } = await fixtureProvider({photographer: ' Jose\u0301 '}).search({
+    ...search, queryOriginal: ' Cafe\u0301 ', queryEnglish: ' Ｃａｆｅ ',
+  });
+  assert.equal(candidates.length, 1);
+  const provenance = validateProvenance(provenanceOf(candidates[0]));
+  assert.equal(provenance.author.name, 'José');
+  assert.equal(provenance.queryOriginal, 'Café');
+  assert.equal(provenance.queryEnglish, 'Cafe');
+});
+test('provider text UTF8 byte boundaries match immutable provenance', async () => {
+  const {candidates} = await fixtureProvider({photographer: 'é'.repeat(150)}).search({
+    ...search, queryOriginal: 'é'.repeat(250), queryEnglish: 'é'.repeat(100),
+  });
+  assert.equal(candidates.length, 1);
+  assert.doesNotThrow(() => validateProvenance(provenanceOf(candidates[0])));
+  assert.equal((await fixtureProvider({photographer:'é'.repeat(150)+'a'}).search(search)).candidates.length, 0);
+  for (const field of ['queryOriginal', 'queryEnglish']) {
+    const value = 'é'.repeat(field === 'queryOriginal' ? 250 : 100) + 'a';
+    await assert.rejects(fixtureProvider().search({...search,[field]:value}),{code:'BROLL_SEARCH_INVALID'});
+  }
+});
+test('provider rejects Unicode control/format characters in text and raw URLs', async () => {
+  for (const control of ['\u0000', '\n', '\t', '\u200b', '\u202e']) {
+    await assert.rejects(fixtureProvider().search({...search,queryEnglish:`cat${control}`}),{code:'BROLL_SEARCH_INVALID'});
+    assert.equal((await fixtureProvider({photographer:`Author${control}`}).search(search)).candidates.length, 0);
+    assert.equal((await fixtureProvider({url:`https://www.pexels.com/photo/${control}cat-1/`}).search(search)).candidates.length, 0);
+  }
+});
+test('provider canonical URL byte boundaries match provenance contract', async () => {
+  const prefix = 'https://www.pexels.com/photo/';
+  const url = prefix + 'a'.repeat(500 - prefix.length);
+  const {candidates} = await fixtureProvider({url}).search(search);
+  assert.equal(candidates.length, 1);
+  assert.doesNotThrow(() => validateProvenance(provenanceOf(candidates[0])));
+  assert.equal((await fixtureProvider({url:url+'a'}).search(search)).candidates.length, 0);
+});
+test('URL cap is checked after canonical percent encoding', async () => {
+  const prefix = 'https://www.pexels.com/photo/';
+  const url = prefix + 'é'.repeat(70);
+  assert.ok(Buffer.byteLength(url) < 500);
+  assert.ok(new URL(url).href.length < 500);
+  const {candidates} = await fixtureProvider({url}).search(search);
+  assert.equal(candidates.length, 1);
+  assert.doesNotThrow(() => validateProvenance(provenanceOf(candidates[0])));
+  const oversized = prefix + 'é'.repeat(80);
+  assert.ok(Buffer.byteLength(oversized) < 500);
+  assert.ok(new URL(oversized).href.length > 500);
+  assert.equal((await fixtureProvider({url:oversized}).search(search)).candidates.length, 0);
+});
