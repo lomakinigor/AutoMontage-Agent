@@ -96,7 +96,9 @@ export function createBrollDiscoveryUI({ request, getState, queueCommand, refres
       for (const [name, field] of [['minDurationSec', e.duration], ['minWidth', e.width], ['minHeight', e.height]]) {
         if (field.value && !(name === 'minDurationSec' && e.mediaKind === 'image')) payload[name] = Number(field.value);
       }
+      const requestedIdentity = e.shelfIdentity;
       const result = await request('/api/broll/search', payload);
+      if (requestedIdentity !== e.shelfIdentity) return;
       e.candidates = Array.isArray(result.candidates) ? result.candidates.slice(0, 12) : [];
       e.searchId = result.searchId; e.nextPage = result.nextPage;
       e.status.textContent = e.candidates.length ? `Вариантов: ${e.candidates.length}` : 'Подходящих вариантов нет. Измените запрос или фильтры.';
@@ -146,6 +148,16 @@ export function createBrollDiscoveryUI({ request, getState, queueCommand, refres
       e.goal.textContent = scene.brollIntent?.goal || 'Подберите подходящее медиа для сцены';
       e.source.textContent = scene.brollIntent?.sourceText || '';
       if (scene.brollIntent) { e.original.value = scene.brollIntent.queryOriginal; e.english.value = scene.brollIntent.queryEnglish; }
+      // Undo/redo and Save update the projected state without input change events.
+      // Keep the shelf only while its query and project snapshot still match.
+      const identity = JSON.stringify([base(), e.original.value, e.english.value]);
+      if (e.shelfIdentity !== undefined && identity !== e.shelfIdentity) {
+        const hadShelf = e.searchId !== null;
+        e.candidates = []; e.searchId = null; e.nextPage = null;
+        drawCards(e, index);
+        if (hadShelf) e.status.textContent = 'Запрос или ревизия изменились. Подберите варианты заново.';
+      }
+      e.shelfIdentity = identity;
       const key = JSON.stringify([asset?.id, asset?.textScan, acknowledged]);
       if (key !== e.evidenceKey) {
         e.evidenceKey = key; e.evidence.replaceChildren();
