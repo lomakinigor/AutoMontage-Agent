@@ -13,9 +13,33 @@ advisories and scans Git history with Gitleaks. A lower-severity exception is al
 when its exact dependency path, exposure, mitigation, owner-visible deadline, and revisit
 triggers are recorded below and accepted by `npm run check:release`.
 
+## B-roll discovery review for 1.6.0
+
+The 2026-09-08 release review covered the new Pexels search, candidate proxy, selected-file
+download, media import, OCR evidence, preview receipt, approval gate, and Remotion environment.
+The public regression suite verifies these boundaries:
+
+- `PEXELS_API_KEY` is read only by the local Node.js server, removed from preview child
+  processes, and excluded from the Remotion browser environment;
+- the browser receives opaque, expiring candidate IDs tied to one Review session, scene, query,
+  and search generation; it cannot submit a download URL;
+- remote requests require HTTPS, exact provider hosts, public DNS answers, revalidated redirects,
+  identity encoding, bounded headers/body/time/redirects, and an expected MIME type;
+- the selected file enters the existing owner-only quarantine and must pass file signature,
+  ffprobe, full decode, geometry/duration limits, normalization, identity checks, and SHA-256;
+- Save, preview, approval, and final render use revision/hash checks. Pending B-roll intent or
+  unacknowledged OCR evidence blocks approval, and search or import never approves a draft;
+- the loopback Review server checks the bearer token, Host, Origin, request shape, size, and
+  edit capability before state-changing routes.
+
+The review found no high or critical dependency advisory and Gitleaks found no secret in the
+feature commits. The remaining accepted dependency risk is documented below. OCR remains a
+warning system rather than a proof that an image has no text or logo, so the full visual preview
+and explicit human approval remain mandatory.
+
 ## Temporary dependency exception
 
-As of 2026-09-06, `npm audit` reports five moderate findings that all describe one
+As of 2026-09-08, `npm audit` reports five moderate findings that all describe one
 transitive advisory. The installed path is:
 
 ```text
@@ -44,8 +68,8 @@ override, or downgrade to the incompatible 3.x line. Reassess immediately on an 
 node-vibrant/Jimp update, if severity becomes high, if direct untrusted-image input is
 introduced, at the next release, or no later than 2026-10-06.
 
-For release 1.5.0, the GitHub Security Advisory, npm registry metadata, and the installed
-transitive dependency chain were reviewed again on 2026-09-06. The latest upstream
+For release 1.6.0, the GitHub Security Advisory, npm registry metadata, and the installed
+transitive dependency chain were reviewed again on 2026-09-08. The latest upstream
 `node-vibrant` remains 4.0.4; the installed chain and limited local `--autotheme` exposure still
 match the advisory and mitigation recorded below. This review accepts the remaining moderate
 availability risk until 2026-10-06; it does not claim that the dependency is fixed.
@@ -53,7 +77,8 @@ availability risk until 2026-10-06; it does not claim that the dependency is fix
 The block below is the machine-readable release-gate record. Keep the prose and JSON in
 sync. The gate also derives the installed five-package chain from the candidate
 `package-lock.json`, requires exactly those five entries, and accepts `reviewedAt` only when
-it matches the dated section for `reviewedFor` and is not in the future.
+it matches the dated section for `reviewedFor`. A date one day ahead of UTC is accepted only
+after 10:00 UTC, when that date has already begun in UTC+14.
 
 ```json security-exception
 {
@@ -78,8 +103,8 @@ it matches the dated section for `reviewedFor` and is not in the future.
     "direct untrusted-image input",
     "next release"
   ],
-  "reviewedAt": "2026-09-06",
-  "reviewedFor": "1.5.0",
+  "reviewedAt": "2026-09-08",
+  "reviewedFor": "1.6.0",
   "revisitBy": "2026-10-06"
 }
 ```

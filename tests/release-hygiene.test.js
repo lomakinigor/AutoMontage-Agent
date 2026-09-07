@@ -94,7 +94,7 @@ function writeSecurityException(root, exception) {
   ].join('\n'));
 }
 
-test('repository dependency exception is reviewed for the 1.5.0 release window', () => {
+test('repository dependency exception is reviewed for the 1.6.0 release window', () => {
   const security = fs.readFileSync(path.join(__dirname, '..', 'SECURITY.md'), 'utf8');
   const match = security.match(/```json security-exception\s*([\s\S]*?)```/);
   assert.ok(match, 'SECURITY.md must contain one machine-readable dependency exception');
@@ -105,8 +105,8 @@ test('repository dependency exception is reviewed for the 1.5.0 release window',
     reviewedFor: exception.reviewedFor,
     revisitBy: exception.revisitBy,
   }, {
-    reviewedAt: '2026-09-06',
-    reviewedFor: '1.5.0',
+    reviewedAt: '2026-09-08',
+    reviewedFor: '1.6.0',
     revisitBy: '2026-10-06',
   });
 });
@@ -578,11 +578,28 @@ test('node-vibrant exception rejects a future review date', () => {
   git(root, ['add', '.']);
   git(root, ['commit', '-qm', 'future exception review']);
 
-  const result = checkRelease({ cwd: root, tree: 'HEAD', now: new Date('2026-08-05T23:59:59Z') });
+  const result = checkRelease({ cwd: root, tree: 'HEAD', now: new Date('2026-08-05T09:59:59Z') });
 
   assert.ok(result.issues.some((entry) => (
     entry.rule === 'security-exception' && /reviewedAt/.test(entry.message)
   )));
+});
+
+test('node-vibrant exception accepts the next global calendar date after UTC+14 midnight', () => {
+  const root = makeRepository();
+  updateReleaseVersion(root, {
+    version: '1.2.1',
+    date: '2026-08-06',
+    section: '### Исправлено\n\n- Validate release metadata before publication.',
+  });
+  enableNodeVibrant(root);
+  writeSecurityException(root, securityException({ reviewedAt: '2026-08-06' }));
+  git(root, ['add', '.']);
+  git(root, ['commit', '-qm', 'global calendar exception review']);
+
+  const result = checkRelease({ cwd: root, tree: 'HEAD', now: new Date('2026-08-05T10:00:00Z') });
+
+  assert.ok(!result.issues.some((entry) => entry.rule === 'security-exception'));
 });
 
 test('node-vibrant exception rejects a stale review carried into a new release date', () => {

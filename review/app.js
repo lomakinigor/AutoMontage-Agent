@@ -137,7 +137,7 @@ function renderMetadata(state, token) {
     previewFrame.hidden = false;
     previewEmpty.hidden = true;
     previewKind.hidden = false;
-    previewKind.textContent = state.currentPreview.stale ? 'УСТАРЕЛ — сохраните и создайте новый preview' : state.currentPreview.kind === 'full'
+    previewKind.textContent = state.currentPreview.stale ? 'УСТАРЕЛ - сохраните и создайте новый preview' : state.currentPreview.kind === 'full'
       ? 'ПОЛНЫЙ РОЛИК'
       : `ФРАГМЕНТ ${formatPreviewTime(state.currentPreview.fromSec)}–${formatPreviewTime(state.currentPreview.toSec)}`;
   } else {

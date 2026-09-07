@@ -393,6 +393,8 @@ npm run check:release
 npm run check:release -- --tree HEAD --base origin/main
 npm run check:release -- --release
 npm run smoke:release
+npm run test:review-ui
+npm pack --dry-run
 ```
 
 Перед commit можно проверить именно staged candidate, а не рабочую папку:
@@ -515,7 +517,7 @@ node --test --test-concurrency=1 tests/broll-preview-e2e.test.js tests/video-bro
 node scripts/broll/live-acceptance.js
 ```
 
-Нужна полная сборка FFmpeg с WebP/H.264/VP8/Opus/AAC, а для нативного OCR — Tesseract с локальным
+Нужна полная сборка FFmpeg с WebP/H.264/VP8/Opus/AAC, а для нативного OCR - Tesseract с локальным
 `eng` language pack. На Ubuntu CI устанавливает `ffmpeg tesseract-ocr tesseract-ocr-eng`.
 Отсутствующий OCR не препятствует поиску/Save/preview, но даёт `unavailable` и требует явного
 разрешения после просмотра перед approval. Проверка отсутствующего инструмента выполняется
@@ -533,5 +535,5 @@ Live-команда без ключа печатает ровно `SKIPPED: PEXE
 и `--project-dir <fixture-project>`. Она не утверждает brief и не рендерит финал.
 
 Для необязательного semantic reranker есть отдельный [воспроизводимый эксперимент](docs/research/2026-09-08-broll-reranking-benchmark.md).
-Его Python/model dependencies не входят в основной монтаж или CI; текущий default — релевантность
+Его Python/model dependencies не входят в основной монтаж или CI; текущий default - релевантность
 провайдера. Openverse-эксперимент не заменяет live acceptance Pexels.

@@ -216,7 +216,7 @@ All spec areas have tasks. New approved policy/receipt applies only discovery wo
 
 Independent spec/code-quality review passes, including the final `e90ee58` receipt/provenance/common-barrier changes. Component-level transport/provider/import/UI security reviews passed. A fresh broader independent security audit confirmed two approval issues, then its turn was stopped by the platform automatic cybersecurity content filter; that blocked probing was not retried. The confirmed v3-marker and late-hash findings were fixed with regressions and reviewed by the main agent; a subsequent independent code-only correctness review passed. Do not describe the interrupted broader audit as a completed independent security sign-off. Root verification covers the implemented security contracts through the full regression suite and ordinary code inspection.
 
-Current local acceptance: full Node 1009 pass/0 fail/3 dedicated-render skips; complete Playwright 56 pass/0 fail/0 skip; the three dedicated real-render E2Es pass separately with 0 skips. Pexels live acceptance remains `SKIPPED: PEXELS_API_KEY is not configured`. No live Pexels search is claimed.
+Current implementation acceptance: full Node 1009 pass/0 fail/3 dedicated-render skips; complete Playwright 56 pass/0 fail/0 skip; the three dedicated real-render E2Es pass separately with 0 skips. During 1.6.0 release preparation, a locally configured Pexels key returned 12 image and 12 video candidates and both bounded proxy paths passed. The workstation sandbox mapped provider DNS to a reserved address, which production correctly rejected; the live acceptance passed through the existing controlled public-DNS test adapter. No full rendition was selected by this command.
 
 ## Final verification record
 
@@ -233,16 +233,17 @@ All media commands used a working full FFmpeg 9.0.1 selected through PATH and AU
 | `node --test tests/broll-pexels.test.js tests/broll-candidates.test.js tests/broll-provenance.test.js` | 16 | 0 | 0 |
 | `node --test tests/broll-render-env-security.test.js tests/env.test.js` | 16 | 0 | 0; installed CLI and packaged shell preview |
 | `node --test tests/broll-benchmark.test.js` | 16 | 0 | 0; two actual offline model reruns reproduced all scores |
-| `npm run test:review-ui` | 56 | 0 | 0; legacy imports and new candidate shelf |
+| `npm run test:review-ui` | 57 | 0 | 0; legacy imports, candidate shelf and visible selection progress |
 | `node --test --test-concurrency=1 tests/broll-preview-e2e.test.js tests/video-broll-e2e.test.js tests/custom-face-media-real.test.js` | 3 | 0 | 0; actual Remotion and complete decode |
 | `npm run doctor` | 8 OK | 0 | 2 warnings: faster-whisper absent; system Chromium for optional shot scripts absent |
 | `npm run demo` and `ffmpeg -v error -i out/demo.mp4 -f null -` | pass | 0 | 0; 1080x1920, 14 seconds |
+| `npm run smoke:release` | 2 real renders | 0 | 0; lesson and dynamic project MP4 files built and finalized |
 | `npm run check:release` | pass | 0 | 0 |
-| `npm pack --dry-run --json` | pass | 0 | 300 entries; safe public env file included; no private work data |
+| `npm pack --dry-run --json` | pass | 0 | 301 entries; montage guide and safe public env file included; no private work data |
 | `npm run check:privacy` and staged pre-commit check | pass | 0 | no private paths, real env files or new binary media |
 | `gitleaks git --no-banner --redact=100 --log-opts=--all` | pass | 0 | 202 commits at code freeze; subsequent documentation commits scanned by the hook |
 | `npm audit --audit-level=high --json` | pass | 0 high/critical | 5 existing moderate findings documented in SECURITY.md |
-| `node scripts/broll/live-acceptance.js` | — | 0 | `SKIPPED: PEXELS_API_KEY is not configured` |
+| `node scripts/broll/live-acceptance.js` with configured key | 2 searches + 2 proxy checks | 0 | 12 image and 12 video candidates; no selection/import/approval/final |
 
 Task 7 command:
 
@@ -250,4 +251,4 @@ Task 7 command:
 node --test tests/broll-preview-approval.test.js tests/lesson-preview.test.js tests/project-workspace.test.js tests/broll-intent.test.js tests/project-mutation.test.js tests/review-server-security.test.js tests/review-draft-save.test.js tests/broll-approval.test.js tests/broll-review-security.test.js tests/review-commands.test.js tests/review-diff.test.js tests/review-model.test.js
 ```
 
-Final Git audit: origin/main remains 0e8c5b3; original checkout and both research files are unchanged. Feature branch contains no added binary media or real env file. CI installs full media/OCR dependencies, runs both browser specs and the three real E2Es sequentially. No push, remote CI run, deployment, version bump, tag or paid API call was performed. Branch review was queued in Codex; the separate worktree is retained for the owner's review and later explicit push.
+Final feature Git audit: origin/main remains 0e8c5b3; original checkout and both research files are unchanged. Feature branch contains no added binary media or real env file. CI installs full media/OCR dependencies, runs both browser specs and the three real E2Es sequentially. The later release-preparation pass updates package metadata to 1.6.0 but does not push, tag, publish npm, deploy, or use a paid API. The separate worktree is retained for the owner's review and later explicit push.
