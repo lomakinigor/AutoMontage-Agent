@@ -51,3 +51,6 @@ test-results/
 playwright-report/
 .DS_Store
 Thumbs.db
+
+# Local implementation/review ledgers and reports.
+.superpowers/

@@ -12,7 +12,7 @@
 | `blur-overlay` | Сильный акцент | `label`, `big`, `headCream`, `headOrange`, `sub` |
 | `text-only` | Дословная цитата | `label`, `quoteCream`, `quoteOrange`, `author` |
 | `stat` | Произнесённая метрика | `label`, `statCream`, `statOrange`, `headCream`, `headOrange`, `sub` |
-| `broll` | Реальный визуальный пример | `brollMedia`, `headCream`, `headOrange`, `sub`, `showSpeakerPip` |
+| `broll` | Реальный визуальный пример | `brollMedia` или draft-only `brollIntent`, `headCream`, `headOrange`, `sub`, `showSpeakerPip` |
 
 ## Отрицательное пространство и постепенный текст
 
@@ -25,6 +25,10 @@
 ## Настоящий b-roll
 
 `brollMedia` принимает изображение или видео. `brollMedia.fit` равен `contain` или `cover`.
+В draft вместо готового файла разрешён `brollIntent` с целью, фразой и поисковыми запросами:
+preview показывает `[ B-ROLL ]`, пока человек не выберет локальный проверенный материал.
+Незаполненный intent не проходит approval. Поиск, OCR и полный preview описаны в
+[Review Workbench](REVIEW-WORKBENCH.md#7-назначить-b-roll-сцене).
 Для видео `brollMedia.trimStartSec` задаёт глобально проверенный вход в клип, а
 `brollMedia.audioMode` равен `mute`, `mix` или `replace`. Демонстрация экрана - всегда настоящее
 видео, не zoom/pan скриншота. По умолчанию используется `audioMode: "mute"`, чтобы сохранить

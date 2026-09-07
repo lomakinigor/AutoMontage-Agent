@@ -113,7 +113,21 @@ bearer URL; файл живёт не дольше 10 минут, до закры
 устаревшие команды не перебазируются молча. Waveform является best-effort: при его ошибке видео,
 слова и timeline продолжают работать. Review не умеет менять текст, effects, keyframes, masks,
 делать global ripple/OpenCut-экспорт, удалять/перезаписывать imported asset или запускать render.
-Черновой Remotion-preview собирается только отдельной командой `automontage preview`.
+Черновой Remotion-preview собирается настоящей командой `automontage preview`; edit Review
+может запускать её отдельным действием и показывать результат.
+
+Для подбора stock-фото/видео draft может временно содержать `brollIntent` вместо медиа.
+Агент берёт цель и исходную фразу из транскрипта и задаёт исходный/английский поисковые запросы.
+Пример формы сцены — [examples/broll-intent.scene.json](../examples/broll-intent.scene.json).
+Пустая сцена сохраняет тип `broll` и показывает `[ B-ROLL ]` в draft-preview; approval её
+отклоняет. В edit Review пользователь ищет через официальный Pexels API и выбирает один
+файл для локального безопасного импорта. `PEXELS_API_KEY` нужен только для этого поиска.
+
+Discovery-asset получает provenance и локальную OCR-проверку. Предупреждение о встроенном
+тексте или невозможности проверки требует явного разрешения в сцене. Выбор и разрешение
+сохраняются обычным Save в новый draft. Затем нужен полный Remotion-preview текущей ревизии,
+подтверждение просмотра и отдельный approval; final render остаётся отдельным действием.
+Полный путь описан в [Review Workbench](REVIEW-WORKBENCH.md#7-назначить-b-roll-сцене).
 
 Legacy image остаётся совместимым и не требует миграции:
 
@@ -181,12 +195,13 @@ Normalized video добавляет старт и звук:
 - Approval заново проверяет normalized metadata, master/proxy hashes, duration и audio stream;
   ручной MP4 в legacy `brollSrc` намеренно не проходит.
 
-После правок и явного «утверждаю» заморозь отдельную approved-копию:
+После правок собери и посмотри полный preview, затем явным «утверждаю» заморозь отдельную
+approved-копию. Для discovery эта проверка обязательна и требует подтверждения просмотра:
 
 ```bash
 node scripts/project/approve-brief.js \
   projects/2026.08.05_tema-rolika \
-  brief/v01-draft.lesson.json
+  brief/v01-draft.lesson.json --confirm-preview-viewed
 ```
 
 Этап 2. Рендер утверждённого листа:

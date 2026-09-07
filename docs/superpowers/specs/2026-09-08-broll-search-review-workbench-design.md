@@ -1,6 +1,6 @@
 # B-roll search in Review Workbench
 
-Date: 2026-09-08. Status: approved architecture, implementation in progress.
+Date: 2026-09-08. Status: implemented; final verification recorded in the implementation plan.
 Base: origin/main at 0e8c5b3 (v1.5.0). The two 2026-09-07 research documents are preserved; their completed research tasks are not an implementation checklist.
 
 ## Product contract
@@ -43,6 +43,8 @@ All POST routes retain Bearer/Origin/Host/body-size checks. Read-only sessions r
 
 One focused transport module uses HTTPS only, exact provider-specific host allowlists, no credentials/nonstandard port/IP literals, redirects limited to three with validation on every hop. Resolve all DNS answers and reject non-public IPv4/IPv6 (loopback/private/link-local/metadata/reserved/mapped addresses); pin validated addresses into the connection lookup while retaining TLS hostname validation. Authorization is sent only to the official API host and never forwarded to media redirects. Do not follow cookies or scrape.
 
+Pexels credentials never enter browser state, errors, URLs or renderer environment. Remotion normally exposes root dotenv values to its rendering browser, so every engine CLI invocation explicitly selects a trusted comment-only public env file. Preview child launch also omits provider credentials from inherited environment. Synthetic-key tests exercise the installed Remotion environment loader, including a legitimate `REMOTION_*` positive case; production keys are never used in fixtures.
+
 Bound header and body time, connect time and caller AbortSignal. Count actual streamed bytes independently of Content-Length; reject oversized declared/actual bodies, truncation and decompression (accept identity encoding only). API JSON cap 2 MiB; thumbnail 5 MiB; preview 32 MiB; selected full image 25 MiB/video 256 MiB, bounded further by existing import limits. Require expected MIME and supported extension, then actual ffprobe codec/container agreement. An untrusted browser never supplies a URL. Selected media goes through the existing owned import pipeline and its disk/process/decode/output quotas. No arbitrary temp paths, no shell commands with remote data.
 
 Proxy only bounded preview renditions; never quietly substitute a full rendition as video preview. Render final media only from normalized local brollMedia.src plus SHA-256. Signed/provider URLs stay server-side.
@@ -57,7 +59,7 @@ Machine evidence is immutable inside asset.json. User acknowledgement belongs to
 
 ## Full preview and approval
 
-Discovery drafts gain a preview policy marker carried through approved copies, so removing brollIntent cannot bypass the gate. Save invalidates viewing confirmation. Preview publication records the exact draft bytes hash in addition to existing briefPath/media hash. A full preview must match current draft, source/output, full range, and verified bytes. Excerpt/stale/modified preview fails approval. UI starts only the actual `automontage preview` command through an edit-only bounded job interface after Save, displays source separately from mounted preview, and offers `Я посмотрел полный preview` followed by explicit `Утвердить`. A viewing receipt binds full-preview hash and draft hash; external CLI approval accepts the same explicit viewing assertion flag. No timer or playing a thumbnail counts as approval. Existing shared project transaction and compare-and-swap are used at final publication; imported metadata/provenance participates in identity comparisons.
+Verified v3 provenance independently requires the gate even when authoring markers are absent; final render also checks policy/receipt for v3 assets. Discovery drafts gain top-level `brollReviewPolicy: "preview-required"` carried through approved copies, so removing brollIntent cannot bypass the gate. Save invalidates viewing confirmation. Preview publication records `briefSha256` for the exact draft bytes parsed for rendering and `sourceSha256` for the source, in addition to existing briefPath/media hash; the fields are optional for legacy manifests. A full preview must match current draft, source/output, full range, and verified bytes. Excerpt/stale/modified preview fails approval. UI starts only the actual `automontage preview` command through an edit-only bounded job interface after Save, displays source separately from mounted preview, and offers `Я посмотрел полный preview` followed by explicit `Утвердить`. Approved `brollApproval: {draftSha256,previewSha256,confirmedAt}` records the full-preview hash and draft hash; external CLI approval accepts the same explicit viewing assertion flag. No timer or playing a thumbnail counts as approval. Existing shared project transaction and compare-and-swap are used at final publication; imported metadata/provenance participates in identity comparisons.
 
 ## Threat model
 

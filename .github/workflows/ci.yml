@@ -47,7 +47,7 @@ jobs:
       - name: Установить системный FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install --yes ffmpeg
+          sudo apt-get install --yes ffmpeg tesseract-ocr tesseract-ocr-eng
 
       - name: Проверить FFmpeg, FFprobe и обязательные кодеры
         run: |
@@ -124,7 +124,7 @@ jobs:
       - name: Установить системный FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install --yes ffmpeg
+          sudo apt-get install --yes ffmpeg tesseract-ocr tesseract-ocr-eng
 
       - name: Проверить FFmpeg, FFprobe и обязательные кодеры
         run: |
@@ -143,3 +143,6 @@ jobs:
 
       - name: Запустить Review browser tests
         run: npm run test:review-ui
+
+      - name: Проверить настоящий preview, approval и final на синтетических медиа
+        run: node --test --test-concurrency=1 tests/broll-preview-e2e.test.js tests/video-broll-e2e.test.js tests/custom-face-media-real.test.js
