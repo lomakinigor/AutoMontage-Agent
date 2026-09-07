@@ -28,3 +28,43 @@ test('dotenv only optional local fallback, never mutates environment', (t) => {
     'environment-value',
   );
 });
+test('provider setting permits Pexels and rejects unsupported values without echo', () => {
+  assert.equal(
+    loadBrollConfig({
+      env: { PEXELS_API_KEY: 'key', BROLL_SEARCH_PROVIDER: 'pexels' },
+    }).provider,
+    'pexels',
+  );
+  assert.throws(
+    () =>
+      loadBrollConfig({
+        env: {
+          PEXELS_API_KEY: 'key',
+          BROLL_SEARCH_PROVIDER: 'secret-unsupported',
+        },
+      }),
+    {
+      code: 'BROLL_PROVIDER_UNSUPPORTED',
+      message: 'BROLL_PROVIDER_UNSUPPORTED',
+    },
+  );
+});
+test('dotenv provider is validated even with environment key and can be overridden', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'broll-provider-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(root, '.env'),
+    'BROLL_SEARCH_PROVIDER=unsupported\nPEXELS_API_KEY=local\n',
+  );
+  assert.throws(
+    () => loadBrollConfig({ root, env: { PEXELS_API_KEY: 'environment' } }),
+    { code: 'BROLL_PROVIDER_UNSUPPORTED' },
+  );
+  assert.deepEqual(
+    loadBrollConfig({
+      root,
+      env: { PEXELS_API_KEY: 'environment', BROLL_SEARCH_PROVIDER: 'pexels' },
+    }),
+    { provider: 'pexels', apiKey: 'environment' },
+  );
+});
