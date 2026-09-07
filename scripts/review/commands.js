@@ -123,6 +123,23 @@ function applyReplaceBroll(candidate, command, assets) {
     : { kind: 'image', assetId, fit: 'cover' };
 }
 
+function validQuery(value) {
+  return typeof value === 'string' && value.trim().length >= 1 && value.length <= 200
+    && !/[\u0000-\u001F\u007F]/u.test(value);
+}
+
+function applySetBrollQuery(candidate, command) {
+  if (!exactCommandShape(command, ['type', 'sceneIndex', 'queryOriginal', 'queryEnglish'])
+    || command.type !== 'set-broll-query'
+    || !validQuery(command.queryOriginal) || !validQuery(command.queryEnglish)) {
+    commandError('broll query shape is not supported');
+  }
+  const scene = eligibleBrollScene(candidate, command.sceneIndex);
+  if (!scene.brollIntent) commandError('broll intent is not available');
+  scene.brollIntent.queryOriginal = command.queryOriginal;
+  scene.brollIntent.queryEnglish = command.queryEnglish;
+}
+
 function selectedAsset(scene, assets) {
   const media = scene && scene.brollMedia;
   return media && isOpaqueAssetId(media.assetId) && assets instanceof Map
@@ -242,6 +259,8 @@ function applyReviewCommand({ brief, command, assets, fps } = {}) {
     applyMoveBoundary(candidate, command);
   } else if (type.value === 'replace-broll') {
     applyReplaceBroll(candidate, command, assets);
+  } else if (type.value === 'set-broll-query') {
+    applySetBrollQuery(candidate, command);
   } else if (type.value === 'set-broll-fit') {
     applySetBrollFit(candidate, command);
   } else if (type.value === 'set-broll-video-start') {

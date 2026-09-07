@@ -52,6 +52,19 @@ function cleanArray(value, limit) {
     .slice(0, limit);
 }
 
+function normalizeBrollIntent(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const result = {
+    goal: cleanString(value.goal),
+    sourceText: cleanString(value.sourceText),
+    queryOriginal: cleanString(value.queryOriginal),
+    queryEnglish: cleanString(value.queryEnglish),
+  };
+  if (!Object.values(result).every(Boolean)) return null;
+  if (value.semanticDescription) result.semanticDescription = cleanString(value.semanticDescription);
+  return result;
+}
+
 function baseScene(scene) {
   const start = Math.max(0, Number(scene.start) || 0);
   const rawEnd = Number(scene.end);
@@ -167,14 +180,18 @@ function normalizeScene(scene, availableBroll) {
     ? structuredClone(scene.brollMedia)
     : null;
   const brollSrc = requestedMedia ? cleanString(requestedMedia.src) : cleanString(scene.brollSrc);
-  if (!brollSrc || !availableBroll.includes(brollSrc)) return fallbackSplit(scene);
+  const brollIntent = normalizeBrollIntent(scene.brollIntent);
+  if ((!brollSrc || !availableBroll.includes(brollSrc)) && !brollIntent) return fallbackSplit(scene);
   const result = {
     ...base,
     headCream: cleanString(scene.headCream, 'ЖИВОЙ'),
     headOrange: cleanString(scene.headOrange, 'ПРИМЕР'),
   };
-  if (requestedMedia) result.brollMedia = requestedMedia;
-  else result.brollSrc = brollSrc;
+  if (brollSrc && availableBroll.includes(brollSrc)) {
+    if (requestedMedia) result.brollMedia = requestedMedia;
+    else result.brollSrc = brollSrc;
+  }
+  if (brollIntent) result.brollIntent = brollIntent;
   if (scene.showSpeakerPip === false) result.showSpeakerPip = false;
   if (scene.sub) result.sub = cleanString(scene.sub);
   return result;
@@ -234,6 +251,7 @@ function normalizeGeneratedBrief(generated, context) {
     corrections,
     scenes,
   };
+  if (scenes.some((scene) => scene.brollIntent)) brief.brollReviewPolicy = 'preview-required';
   if (context.facePos) brief.facePos = context.facePos;
   if (context.faceZoom) brief.faceZoom = context.faceZoom;
 
@@ -254,7 +272,7 @@ function buildSystemPrompt({ maxScenes, availableBroll }) {
 - blur-overlay: сильный акцент, поля label, big, headCream, headOrange, sub;
 - text-only: дословная цитата, поля label, quoteCream, quoteOrange, author;
 - stat: реально произнесённая метрика, поля label, statCream, statOrange, headCream, headOrange, sub;
-- broll: реальный визуальный пример, поля brollSrc или brollMedia, headCream, headOrange, sub, showSpeakerPip.
+- broll: реальный визуальный пример, поля brollSrc/brollMedia или brollIntent, headCream, headOrange, sub, showSpeakerPip. Для поиска заполни brollIntent: goal и sourceText дословно по речи, queryOriginal на языке речи, короткий queryEnglish на английском для stock-поиска; не выдумывай удалённый контент.
 
 Правила:
 - chart запрещён;

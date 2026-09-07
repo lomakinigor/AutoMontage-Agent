@@ -89,6 +89,9 @@ function validateLessonBrief(brief, {
         }
       }
     }
+    if (scene.scene === 'broll' && scene.brollIntent && brief.status === 'approved') {
+      errors.push(`scenes[${index}].brollIntent: unresolved b-roll intent cannot be approved`);
+    }
   });
 
   if (requireApproved && brief && brief.status !== 'approved') {

@@ -1229,6 +1229,11 @@ function approveBrief(workspace, draftJsonPath, {
       throw new Error(`draft brief is invalid: ${draftValidation.errors.join('\n')}`);
     }
     for (const [index, scene] of draft.scenes.entries()) {
+      if (scene?.scene === 'broll' && scene.brollIntent && !scene.brollMedia && !scene.brollSrc) {
+        throw new Error(`scenes[${index}].brollIntent: unresolved b-roll intent cannot be approved`);
+      }
+    }
+    for (const [index, scene] of draft.scenes.entries()) {
       if (scene?.scene === 'broll' && !scene.brollMedia && !isRenderableBrollSource(scene.brollSrc)) {
         throw new Error(`scenes[${index}].brollSrc: b-roll поддерживает только изображения`);
       }
@@ -1267,7 +1272,15 @@ function approveBrief(workspace, draftJsonPath, {
         throw new Error(`${label} already exists`);
       }
     }
-    const approvedBrief = { ...draft, status: 'approved' };
+    const approvedBrief = {
+      ...draft,
+      status: 'approved',
+      scenes: draft.scenes.map(({ brollIntent, ...scene }) => scene),
+    };
+    const approvedValidation = validateLessonBrief(approvedBrief, { requireApproved: true });
+    if (!approvedValidation.ok) {
+      throw new Error(`approved brief is invalid: ${approvedValidation.errors.join('\n')}`);
+    }
     const approvedMarkdown = approvedMarkdownPath ? formatBriefMarkdown(approvedBrief) : null;
     const entry = {
       revision: draftEntry.revision,
