@@ -144,6 +144,7 @@ function diffLessonBrief({ before, after } = {}) {
 
   const expected = deepClone(before);
   expected.status = 'draft';
+  delete expected.brollApproval;
   if (before.brollReviewPolicy === undefined
     && after.brollReviewPolicy === 'preview-required') {
     expected.brollReviewPolicy = 'preview-required';

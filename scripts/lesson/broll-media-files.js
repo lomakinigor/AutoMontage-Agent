@@ -17,6 +17,7 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12
 const NORMALIZED_IMAGE = new RegExp(`^assets/broll/images/(${UUID})/media\\.webp$`);
 const NORMALIZED_VIDEO = new RegExp(`^assets/broll/video/(${UUID})/media\\.mp4$`);
 const ERROR_MESSAGES = Object.freeze({
+  BROLL_PREVIEW_REQUIRED: 'discovered b-roll requires an approved full-preview receipt',
   BROLL_TEXT_REVIEW_REQUIRED: 'b-roll embedded text requires acknowledgement of the exact media and scan',
   BROLL_INTENT_UNRESOLVED: 'b-roll search intent requires selected local media',
   BROLL_MEDIA_PATH_INVALID: 'b-roll media reference is not allowed',
@@ -469,6 +470,10 @@ function assertTransactionCurrent(fileSystem, verifiedAssets) {
 
 function verificationHandle(fileSystem, verifiedAssets) {
   return {
+    hasDiscovery: verifiedAssets.some(asset => asset.metadata?.version === 3),
+    assertIdentity() {
+      for (const asset of verifiedAssets) for (const tracked of asset.trackedFiles) assertTrackedIdentity(fileSystem, tracked);
+    },
     assertCurrent() {
       assertTransactionCurrent(fileSystem, verifiedAssets);
     },
@@ -528,6 +533,8 @@ function verifyBriefBrollMedia({
         }
         const scan = asset.metadata?.textScan;
         if (asset.metadata?.version === 3) {
+          if (brief.status === 'approved' && (brief.brollReviewPolicy !== 'preview-required'
+            || !brief.brollApproval || !require('./brief').validateLessonBrief(brief, { requireApproved: true }).ok)) fail('BROLL_PREVIEW_REQUIRED');
           const acknowledgement = scene.brollReview;
           const matches = acknowledgement?.allowEmbeddedText === true
             && acknowledgement.assetSha256 === asset.metadata.canonicalSha256

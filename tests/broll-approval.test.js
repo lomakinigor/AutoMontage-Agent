@@ -231,3 +231,56 @@ test('clear scans need no acknowledgement; unresolved draft intent cannot approv
     code: 'BROLL_INTENT_UNRESOLVED',
   });
 });
+
+test('verified v3 discovery provenance requires preview even without authoring markers; v2 remains compatible', (t) => {
+  const path = require('node:path');
+  const { approveBrief } = require('../scripts/project/workspace');
+  for (const version of [3, 2]) {
+    const b = bundle(t, 'clear');
+    b.brief.source = b.workspace.sourcePath;
+    if (version === 2) {
+      b.metadata.version = 2;
+      delete b.metadata.provenance;
+      delete b.metadata.textScan;
+      fs.writeFileSync(b.path, JSON.stringify(b.metadata));
+    }
+    const draftPath = path.join(b.workspace.dir, b.workspace.manifest.currentBrief);
+    fs.writeFileSync(draftPath, JSON.stringify(b.brief));
+    const approve = () => approveBrief(b.workspace, draftPath, { root: b.root, runToolImpl: b.runToolImpl });
+    if (version === 3) assert.throws(approve, /preview/i);
+    else assert.equal(JSON.parse(fs.readFileSync(approve().jsonPath)).status, 'approved');
+  }
+});
+
+test('final media verification refuses approved v3 discovery without its preview receipt', (t) => {
+  const b = bundle(t, 'clear');
+  b.brief.status = 'approved';
+  assert.throws(() => verifyBriefBrollMedia(b), {code:'BROLL_PREVIEW_REQUIRED'});
+  b.brief.brollReviewPolicy = 'preview-required';
+  assert.throws(() => verifyBriefBrollMedia(b), {code:'BROLL_PREVIEW_REQUIRED'});
+  b.brief.brollApproval = {draftSha256:'a'.repeat(64),previewSha256:'b'.repeat(64),confirmedAt:'2026-09-08T00:00:00.000Z'};
+  const verified = verifyBriefBrollMedia(b);verified.assertCurrent();verified.close();
+});
+
+test('common approval barrier catches b-roll bytes changed during the final preview source hash', (t) => {
+  const path = require('node:path');
+  const crypto = require('node:crypto');
+  const { approveBrief } = require('../scripts/project/workspace');
+  const { planPreview, publishCurrentPreview } = require('../scripts/project/preview-workspace');
+  const b = bundle(t, 'clear');
+  b.brief.source = b.workspace.sourcePath;
+  b.brief.brollReviewPolicy = 'preview-required';
+  const draftPath = path.join(b.workspace.dir, b.workspace.manifest.currentBrief);
+  fs.writeFileSync(draftPath, JSON.stringify(b.brief));
+  const planned = planPreview(b.workspace, {briefPath:draftPath,briefSha256:crypto.createHash('sha256').update(fs.readFileSync(draftPath)).digest('hex'),range:{kind:'full',fromSec:0,toSec:4}});
+  const staged = path.join(b.workspace.dir,'previews/stage.mp4');fs.writeFileSync(staged,'preview');
+  publishCurrentPreview(b.workspace,planned,staged,{width:960,height:540,fps:25,generatedAt:new Date().toISOString()});
+  const descriptors = new Map();let sourceReads=0;let changed=false;
+  const fileSystem = new Proxy(fs,{get(target,key){
+    if(key==='openSync')return (filename,...args)=>{const fd=target.openSync(filename,...args);descriptors.set(fd,String(filename));return fd;};
+    if(key==='readSync')return (fd,buffer,offset,length,position)=>{const read=target.readSync(fd,buffer,offset,length,position);if(descriptors.get(fd)===b.workspace.sourcePath&&position===0&&++sourceReads===4){fs.appendFileSync(path.join(b.workspace.dir,b.brief.scenes[0].brollMedia.src),'changed');changed=true;}return read;};
+    return Reflect.get(target,key);
+  }});
+  assert.throws(()=>approveBrief(b.workspace,draftPath,{root:b.root,runToolImpl:b.runToolImpl,fileSystem,confirmPreviewViewed:true}),{code:'BROLL_MEDIA_IDENTITY_CHANGED'});
+  assert.equal(changed,true);
+});

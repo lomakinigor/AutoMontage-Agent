@@ -146,6 +146,7 @@ function buildReviewStateFromEdit({ state, brief, timing } = {}) {
     },
     brief: {
       status: brief.status,
+      ...(brief.brollReviewPolicy ? { brollReviewPolicy: brief.brollReviewPolicy } : {}),
       title: brief.title,
       scenes: brief.scenes.map(browserScene),
     },
@@ -233,6 +234,8 @@ function buildReviewState({
     source: { url: '/media/source' },
     currentPreview: preview ? {
       url: '/media/current-preview',
+      stale: !(brief.status === 'approved' && brief.brollApproval?.draftSha256 === preview.briefSha256 && brief.brollApproval?.previewSha256 === preview.sha256)
+        && (preview.briefPath !== manifest.currentBrief || (preview.briefSha256 ? preview.briefSha256 !== crypto.createHash('sha256').update(fs.readFileSync(base.briefFilePath)).digest('hex') : brief.brollReviewPolicy === 'preview-required')),
       kind: preview.kind,
       fromSec: preview.fromSec,
       toSec: preview.toSec,
@@ -243,6 +246,7 @@ function buildReviewState({
     } : null,
     brief: {
       status: reviewBrief.status,
+      ...(reviewBrief.brollReviewPolicy ? { brollReviewPolicy: reviewBrief.brollReviewPolicy } : {}),
       title: reviewBrief.title,
       scenes: reviewBrief.scenes.map(browserScene),
     },

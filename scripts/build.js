@@ -54,6 +54,7 @@ const {
 } = require('./project/workspace');
 const { withPublicMediaLease } = require('./public-media');
 const { withRenderMediaBundle } = require('./render-media-bundle');
+const { verifyBriefBrollMedia } = require('./lesson/broll-media-files');
 
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : d; };
@@ -417,6 +418,10 @@ if (lessonAction === 'render') {
       sourceVideo: srcVideo,
       framesOverride,
     });
+    const mediaVerification = verifyBriefBrollMedia({
+      root: ROOT, workspace: buildContext.project, brief,
+    });
+    try { mediaVerification.assertCurrent(); } finally { mediaVerification.close(); }
   } catch (error) {
     console.error(`❌ рендер lesson отменён: ${error.message}`);
     process.exit(1);

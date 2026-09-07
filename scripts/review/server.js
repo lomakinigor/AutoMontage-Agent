@@ -13,6 +13,7 @@ const {
 } = require('../filesystem-capabilities');
 const { probeOpenedMedia } = require('../media-probe');
 const {
+  approveBrief,
   acquireProjectMutationLease,
   nextBriefPaths,
   readProjectManifest,
@@ -44,6 +45,7 @@ const {
 } = require('./model');
 const { auditBriefTiming } = require('./timing-audit');
 const { isDeepStrictEqual } = require('node:util');
+const { createPreviewJobs } = require('./preview-jobs');
 const { createBrollDiscovery } = require('./broll-discovery');
 const { createPexelsProvider } = require('../broll/pexels');
 const { loadBrollConfig } = require('../broll/config');
@@ -1071,6 +1073,7 @@ function handleEditRoute({
   probeReviewMediaImpl,
 }) {
   if (!editable) rejectRequest(405, 'READ_ONLY_REVIEW');
+  if (runtime.previewJobs.busy) rejectRequest(409, 'PREVIEW_BUSY');
   const body = parseEditBody(bodyBytes);
   const replay = replayReviewEdit({ root, projectDir, runtime, body, sourceFile });
   if (pathname === '/api/validate') {
@@ -1194,6 +1197,7 @@ async function routeRequest({
     sendError(response, 403);
     return;
   }
+  if (runtime.previewJobs.busy && request.method === 'POST') { rejectRequest(409, 'PREVIEW_BUSY'); }
   if (pathname === '/api/assets/import') {
     if (request.method !== 'POST' || !editable) {
       sendError(response, 405, request.method === 'HEAD');
@@ -1247,6 +1251,131 @@ async function routeRequest({
     && (pathname === '/api/validate' || pathname === '/api/save');
   if (editMutation && editable && (runtime.importController.busy || runtime.discovery?.busy)) {
     rejectRequest(409, 'MEDIA_IMPORT_BUSY');
+  }
+  if (
+    [
+      '/api/broll/preview',
+      '/api/broll/preview-job',
+      '/api/broll/approve',
+    ].includes(pathname)
+  ) {
+    if (!editable) {
+      sendError(response, 405);
+      return;
+    }
+    if (request.headers.origin && request.headers.origin !== origin) {
+      sendError(response, 403);
+      return;
+    }
+    try {
+      if (pathname === '/api/broll/preview-job') {
+        if (request.method !== 'GET') {
+          sendError(response, 405);
+          return;
+        }
+        const job = runtime.previewJobs.get(url.searchParams.get('id'));
+        const state = refreshRuntimeState({
+          root,
+          projectDir,
+          editable,
+          runtime,
+          sourceFile,
+          waveformFile,
+        });
+        sendJson(response, 200, { ...job, state });
+        return;
+      }
+      if (request.method !== 'POST') {
+        sendError(response, 405);
+        return;
+      }
+      if (runtime.importController.busy || runtime.discovery.busy) {
+        rejectRequest(409, 'MEDIA_IMPORT_BUSY');
+      }
+      if (
+        !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(
+          request.headers['content-type'] || '',
+        )
+      ) {
+        sendError(response, 400);
+        return;
+      }
+      const bytes = await consumeLimitedBody(request, response);
+      if (bytes === null) return;
+      let body;
+      try {
+        body = JSON.parse(
+          new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+        );
+      } catch (_) {
+        rejectRequest(400, 'PREVIEW_INVALID_REQUEST');
+      }
+      const allowed =
+        pathname === '/api/broll/preview'
+          ? ['baseRevision', 'baseHash', 'manifestHash', 'kind', 'sceneIndex']
+          : [
+              'baseRevision',
+              'baseHash',
+              'manifestHash',
+              'confirmPreviewViewed',
+            ];
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body) ||
+        Object.keys(body).some((key) => !allowed.includes(key))
+      )
+        rejectRequest(400, 'PREVIEW_INVALID_REQUEST');
+      if (runtime.previewJobs.busy) rejectRequest(409, 'PREVIEW_BUSY');
+      const current = runtime.previewJobs.check(body);
+      assertCurrentSourceIdentity({ projectDir, current, sourceFile });
+      if (pathname === '/api/broll/preview') {
+        sendJson(response, 202, runtime.previewJobs.start(body));
+        return;
+      }
+      if (body.confirmPreviewViewed !== true)
+        rejectRequest(400, 'PREVIEW_CONFIRMATION_REQUIRED');
+      approveBrief(current.workspace, current.briefFilePath, {
+        root,
+        fileSystem,
+        confirmPreviewViewed: true,
+        expectedPreviewSha256:
+          current.workspace.manifest.currentPreview?.sha256,
+      });
+      const state = refreshRuntimeState({
+        root,
+        projectDir,
+        editable,
+        runtime,
+        sourceFile,
+        waveformFile,
+      });
+      sendJson(response, 201, { ok: true, state });
+    } catch (error) {
+      const code = [
+        'STALE_REVIEW_BASE',
+        'PREVIEW_BUSY',
+        'PREVIEW_NOT_FOUND',
+        'PREVIEW_INVALID_REQUEST',
+        'PREVIEW_DRAFT_REQUIRED',
+        'PREVIEW_CONFIRMATION_REQUIRED',
+        'MEDIA_IMPORT_BUSY',
+      ].includes(error?.code)
+        ? error.code
+        : 'PREVIEW_APPROVAL_FAILED';
+      const status =
+        code === 'PREVIEW_NOT_FOUND'
+          ? 404
+          : ['STALE_REVIEW_BASE', 'PREVIEW_BUSY', 'MEDIA_IMPORT_BUSY'].includes(
+                code,
+              )
+            ? 409
+            : code === 'PREVIEW_APPROVAL_FAILED'
+              ? 422
+              : 400;
+      sendJson(response, status, { error: code });
+    }
+    return;
   }
   const discoveryRoute = pathname.startsWith('/api/broll/') || pathname.startsWith('/media/broll-candidate/');
   if (discoveryRoute) {
@@ -1508,6 +1637,7 @@ async function startReviewServer({
   brollProvider,
   brollDownload,
   brollStore,
+  previewSpawnImpl,
 } = {}) {
   const resolvedRoot = path.resolve(root);
   const resolvedProjectDir = path.resolve(projectDir || '');
@@ -1552,6 +1682,7 @@ async function startReviewServer({
     activeImportAbortControllers: new Set(),
     activeImportFinalizers: new Set(),
   };
+  runtime.previewJobs = createPreviewJobs({root:resolvedRoot,projectDir:resolvedProjectDir,getBase:()=>loadReviewBase({projectDir:resolvedProjectDir}),...(previewSpawnImpl ? { spawnImpl: previewSpawnImpl } : {})});
   runtime.discovery = createBrollDiscovery({
     provider: brollProvider || {search(input) {const config=loadBrollConfig({root:resolvedRoot});return createPexelsProvider(config).search(input);}},
     ...(brollDownload?{download:brollDownload}:{}), ...(brollStore?{store:brollStore}:{}),
@@ -1639,7 +1770,7 @@ async function startReviewServer({
     throw error;
   }
   const originalClose = server.close.bind(server);
-  server.close = (...args) => { runtime.discovery.close(); return originalClose(...args); };
+  server.close = (...args) => { runtime.previewJobs.close(); runtime.discovery.close(); return originalClose(...args); };
   if (handoff) server.once('close', handoff.cleanup);
   return {
     server,
@@ -1648,11 +1779,13 @@ async function startReviewServer({
     origin,
     handoffPath: handoff ? handoff.path : null,
     abortActiveImports() {
+      runtime.previewJobs.close();
       runtime.discovery.close();
       for (const controller of runtime.activeImportAbortControllers) controller.abort();
     },
     async waitForActiveImports() {
       await runtime.discovery.waitIdle();
+      await runtime.previewJobs.waitIdle();
       while (runtime.activeImportFinalizers.size > 0) {
         await Promise.allSettled([...runtime.activeImportFinalizers]);
       }

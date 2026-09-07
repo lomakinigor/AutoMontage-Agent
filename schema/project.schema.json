@@ -79,6 +79,8 @@
             "height": {"type": "integer", "minimum": 1},
             "fps": {"type": "number", "exclusiveMinimum": 0},
             "generatedAt": {"type": "string", "minLength": 1},
+            "briefSha256": {"type":"string","pattern":"^[a-f0-9]{64}$"},
+            "sourceSha256": {"type":"string","pattern":"^[a-f0-9]{64}$"},
             "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
           }
         },

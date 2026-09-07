@@ -16,6 +16,15 @@
   "properties": {
     "version": { "const": 1 },
     "status": { "enum": ["draft", "approved"] },
+    "brollApproval": {
+      "type":"object", "additionalProperties":false,
+      "required":["draftSha256","previewSha256","confirmedAt"],
+      "properties":{
+        "draftSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+        "previewSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+        "confirmedAt":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"}
+      }
+    },
     "brollReviewPolicy": { "const": "preview-required" },
     "source": { "type": "string", "minLength": 1 },
     "theme": { "type": ["string", "object"] },
@@ -247,7 +256,7 @@
       }
     }
   },
-  "allOf": [{
+  "allOf": [{"if":{"properties":{"status":{"const":"approved"},"brollReviewPolicy":{"const":"preview-required"}},"required":["status","brollReviewPolicy"]},"then":{"required":["brollApproval"]}}, {
     "if": { "properties": { "status": { "const": "approved" } }, "required": ["status"] },
     "then": { "properties": { "scenes": { "items": { "not": { "required": ["brollIntent"] } } } } }
   }]

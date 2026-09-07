@@ -861,7 +861,7 @@ function withProjectMutation(workspace, operation, {
       get manifest() {
         return persistedManifest;
       },
-      commitManifest(nextManifest, { purpose = 'project-mutation-manifest' } = {}) {
+      commitManifest(nextManifest, { purpose = 'project-mutation-manifest', assertCurrent = () => {} } = {}) {
         const validated = validateProjectManifest(nextManifest, {
           projectDir: workspace.dir,
           fileSystem,
@@ -876,6 +876,7 @@ function withProjectMutation(workspace, operation, {
         let committed = false;
         try {
           assertFileSnapshot(fileSystem, manifestPath, manifestSnapshot);
+          assertCurrent();
           manifestSnapshot = staged.commitReplace();
           committed = true;
           persistedManifest = validated;
@@ -1195,6 +1196,8 @@ function saveDraftRevision(workspace, options = {}) {
 }
 
 function approveBrief(workspace, draftJsonPath, {
+  confirmPreviewViewed = false,
+  expectedPreviewSha256,
   fileSystem = fs,
   temporaryId = randomUUID,
   root = path.resolve(__dirname, '../..'),
@@ -1277,9 +1280,22 @@ function approveBrief(workspace, draftJsonPath, {
       status: 'approved',
       scenes: draft.scenes.map(({ brollIntent, ...scene }) => scene),
     };
-    const approvedValidation = validateLessonBrief(approvedBrief, { requireApproved: true });
-    if (!approvedValidation.ok) {
-      throw new Error(`approved brief is invalid: ${approvedValidation.errors.join('\n')}`);
+    const mediaVerification = verifyBriefBrollMedia({
+      root, workspace: persistedWorkspace, brief: draft, runToolImpl, fileSystem, platform,
+    });
+    let previewVerification = null;
+    try {
+      const needsPreview = mediaVerification.hasDiscovery || draft.brollReviewPolicy === 'preview-required'
+        || draft.scenes.some(scene => scene.brollIntent);
+      if (needsPreview) approvedBrief.brollReviewPolicy = 'preview-required';
+      previewVerification = needsPreview
+        ? require('./preview-workspace').verifyApprovalPreview(persistedWorkspace, draft, draftSnapshot.bytes, { fileSystem, confirmPreviewViewed, expectedPreviewSha256 }) : null;
+      if (previewVerification) approvedBrief.brollApproval = previewVerification.receipt;
+      const approvedValidation = validateLessonBrief(approvedBrief, { requireApproved: true });
+      if (!approvedValidation.ok) throw new Error(`approved brief is invalid: ${approvedValidation.errors.join('\n')}`);
+    } catch (error) {
+      try { mediaVerification.close(); } finally { previewVerification?.close(); }
+      throw error;
     }
     const approvedMarkdown = approvedMarkdownPath ? formatBriefMarkdown(approvedBrief) : null;
     const entry = {
@@ -1296,9 +1312,17 @@ function approveBrief(workspace, draftJsonPath, {
     nextManifest.briefs.push(entry);
     nextManifest.currentBrief = entry.jsonPath;
     nextManifest.updatedAt = new Date().toISOString();
-    const mediaVerification = verifyBriefBrollMedia({
-      root, workspace: persistedWorkspace, brief: draft, runToolImpl, fileSystem, platform,
-    });
+    const assertApprovalCurrent = () => {
+      assertFileSnapshot(fileSystem, draftPath, draftSnapshot);
+      mediaVerification.assertCurrent();
+      previewVerification?.assertCurrent();
+      // All potentially long hashes precede one common fast identity barrier.
+      mediaVerification.assertIdentity();
+      previewVerification?.assertIdentity();
+      const currentDraft = fileSystem.lstatSync(draftPath);
+      if (!sameFileIdentity(currentDraft, draftSnapshot.identity) || currentDraft.isSymbolicLink()
+        || ['size', 'mtimeMs', 'ctimeMs'].some(key => currentDraft[key] !== draftSnapshot.identity[key])) throw manifestConflict();
+    };
     const stages = [];
     let markdownStage = null;
     let jsonStage = null;
@@ -1322,11 +1346,15 @@ function approveBrief(workspace, draftJsonPath, {
 
       assertFileSnapshot(fileSystem, draftPath, draftSnapshot);
       mediaVerification.assertCurrent();
+      previewVerification?.assertCurrent();
       if (markdownStage) markdownStage.commitNoReplace();
       jsonStage.commitNoReplace();
       assertFileSnapshot(fileSystem, draftPath, draftSnapshot);
+      mediaVerification.assertCurrent();
+      previewVerification?.assertCurrent();
       const validatedManifest = transaction.commitManifest(nextManifest, {
         purpose: 'approval-manifest',
+        assertCurrent: assertApprovalCurrent,
       });
       manifestCommitted = true;
       workspace.manifest = validatedManifest;
@@ -1353,6 +1381,7 @@ function approveBrief(workspace, draftJsonPath, {
       const cleanup = () => {
         for (const stage of stages) stage.cleanupTemp();
         mediaVerification.close();
+        previewVerification?.close();
       };
       if (manifestCommitted) {
         try {

@@ -1073,3 +1073,18 @@ video {
 .broll-text-ack input { width: auto; }
 .edit-broll { grid-column: 1 / -1; min-width: 0; }
 .broll-discovery { font-size: 0.875rem; }
+
+/* Actual mounted-preview actions follow the same editor controls on small screens. */
+.preview-actions { border-top: 1px solid hsl(var(--border)); margin-top: 20px; padding-top: 16px; }
+.preview-actions h3 { margin: 0 0 12px; }
+.preview-actions-row { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 12px; }
+.preview-actions select { min-height: 42px; max-width: 100%; padding: 8px 12px; border: 1px solid hsl(var(--border-strong)); border-radius: var(--radius-sm); background: hsl(var(--card-raised)); color: inherit; font: inherit; }
+.preview-viewed { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; }
+.preview-viewed input { width: 20px; height: 20px; flex: 0 0 auto; accent-color: hsl(var(--amber)); }
+.preview-actions .edit-status:empty { display: none; }
+.preview-actions :focus-visible { outline: 3px solid hsl(var(--focus)); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .preview-actions-row { align-items: stretch; }
+  .preview-actions-row > * { flex: 1 1 100%; }
+  .preview-actions .edit-button { white-space: normal; }
+}

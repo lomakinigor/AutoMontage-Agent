@@ -185,7 +185,7 @@ test('workspace approval rejects pending intent and strips resolved intent while
     now: new Date('2026-09-08T10:00:00.000Z'),
   });
   const paths = nextBriefPaths(workspace);
-  const pending = makeBrief({ source: workspace.manifest.source.localPath });
+  const pending = makeBrief({ source: workspace.sourcePath });
   fs.writeFileSync(paths.jsonPath, `${JSON.stringify(pending, null, 2)}\n`);
   fs.writeFileSync(paths.markdownPath, formatBriefMarkdown(pending));
   recordBrief(workspace, {
@@ -198,7 +198,11 @@ test('workspace approval rejects pending intent and strips resolved intent while
   fs.writeFileSync(imagePath, 'image');
   pending.scenes[0].brollSrc = 'assets/broll/resolved.png';
   fs.writeFileSync(paths.jsonPath, `${JSON.stringify(pending, null, 2)}\n`);
-  const approved = approveBrief(workspace, paths.jsonPath);
+  const {planPreview,publishCurrentPreview} = require('../scripts/project/preview-workspace');
+  const plan = planPreview(workspace,{briefPath:paths.jsonPath,briefSha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(paths.jsonPath)).digest('hex'),range:{kind:'full',fromSec:0,toSec:4}});
+  const staged = path.join(workspace.dir,'previews','stage.mp4'); fs.writeFileSync(staged,'preview fixture');
+  publishCurrentPreview(workspace,plan,staged,{width:960,height:540,fps:25,generatedAt:new Date().toISOString()});
+  const approved = approveBrief(workspace, paths.jsonPath,{confirmPreviewViewed:true});
   const approvedBrief = JSON.parse(fs.readFileSync(approved.jsonPath, 'utf8'));
   assert.equal(approvedBrief.brollReviewPolicy, 'preview-required');
   assert.equal(approvedBrief.scenes[0].brollIntent, undefined);

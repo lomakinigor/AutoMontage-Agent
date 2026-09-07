@@ -209,6 +209,7 @@ function validateReviewCandidate({ candidate, base, assets, fps } = {}) {
     commandError('review context is invalid');
   }
   candidate.status = 'draft';
+  delete candidate.brollApproval;
   if (!Array.isArray(candidate.scenes)
     || candidate.scenes.some((scene) => scene && scene.brollMediaBlocked === true)) {
     commandError('contains unresolved broll media');
