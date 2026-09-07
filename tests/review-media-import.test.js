@@ -308,6 +308,32 @@ test('discovery import publishes v3 evidence while manual import remains v2', as
   assert.deepEqual(published.textScan, textScan);
 });
 
+test('discovery import cancelled after scanning publishes no bundle', async (t) => {
+  const projectDir = tempProject(t);
+  const abort = new AbortController();
+  const provenance = {
+    provider: 'pexels', providerAssetId: '123',
+    sourcePage: 'https://www.pexels.com/photo/example-123/',
+    author: { name: 'Jane', url: 'https://www.pexels.com/@jane/' },
+    license: { name: 'Pexels License', url: 'https://www.pexels.com/license/' },
+    queryOriginal: 'офис', queryEnglish: 'office',
+    retrievedAt: '2026-09-08T12:00:00.000Z',
+    rendition: { id: 'original', width: 320, height: 180, mimeType: 'image/png' },
+  };
+  await assert.rejects(importReviewMedia({
+    request: Readable.from([Buffer.from('x')]), signal: abort.signal,
+    projectDir, outputFps: 25, headers: rawHeaders('found.png', 'image/png', 1),
+    controller: createImportController(),
+    statfsImpl: () => ({ bavail: 10n ** 12n, bsize: 4096n }), randomId: () => UUID,
+    runMediaProcessImpl: fakeProcessor({ source: probeJson({ kind: 'image' }) }), provenance,
+    scanEmbeddedTextImpl: async () => {
+      abort.abort();
+      return { status: 'clear', text: '', reasons: [], engine: 'tesseract' };
+    },
+  }), (error) => error.code === 'MEDIA_PROCESS_ABORTED');
+  assert.equal(fs.existsSync(path.join(projectDir, 'assets', 'broll', 'images', UUID)), false);
+});
+
 test('video normalization uses visual duration, even padding, explicit audio duration, and hard encoder bounds', async (t) => {
   const projectDir = tempProject(t);
   const calls = [];

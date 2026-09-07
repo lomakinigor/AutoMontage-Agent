@@ -1848,10 +1848,20 @@ async function importReviewMedia({
             run: runMediaProcessImpl,
           });
         } catch (error) {
-          if (error?.code === 'MEDIA_PROCESS_ABORTED') throw error;
+          if (signal?.aborted || error?.code === 'MEDIA_PROCESS_ABORTED') {
+            if (error?.code === 'MEDIA_PROCESS_ABORTED') throw error;
+            throw Object.assign(new Error('media import aborted'), {
+              code: 'MEDIA_PROCESS_ABORTED', cause: error,
+            });
+          }
           textScan = {
             status: 'unavailable', text: '', reasons: ['ocr-failed'], engine: 'tesseract',
           };
+        }
+        if (signal?.aborted) {
+          throw Object.assign(new Error('media import aborted'), {
+            code: 'MEDIA_PROCESS_ABORTED',
+          });
         }
         discovery = { provenance: discoveryProvenance, textScan };
       }

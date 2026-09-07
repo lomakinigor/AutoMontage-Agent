@@ -68,7 +68,12 @@ async function scanEmbeddedText({ filePath, mediaKind, durationSec = 0, signal, 
     }
     return scanResult(texts);
   } catch (error) {
-    if (error?.code === 'MEDIA_PROCESS_ABORTED') throw error;
+    if (signal?.aborted || error?.code === 'MEDIA_PROCESS_ABORTED') {
+      if (error?.code === 'MEDIA_PROCESS_ABORTED') throw error;
+      throw Object.assign(new Error('embedded text scan aborted'), {
+        code: 'MEDIA_PROCESS_ABORTED', cause: error,
+      });
+    }
     return unavailable('ocr-failed');
   }
 }

@@ -20,6 +20,17 @@ test('missing OCR tool records unavailable evidence and scan hashes are determin
   assert.equal(hashTextScan(scan), hashTextScan(structuredClone(scan)));
 });
 
+test('an aborted scan remains cancellation when process teardown reports timeout first', async () => {
+  const abort = new AbortController();
+  await assert.rejects(scanEmbeddedText({
+    filePath: '/normalized/image.webp', mediaKind: 'image', signal: abort.signal,
+    run: async () => {
+      abort.abort();
+      throw Object.assign(new Error('timed out during teardown'), { code: 'MEDIA_PROCESS_TIMEOUT' });
+    },
+  }), (error) => error.code === 'MEDIA_PROCESS_ABORTED');
+});
+
 test('image OCR uses bounded shell-free process request and conservatively flags text', async () => {
   let invocation;
   const scan = await scanEmbeddedText({
