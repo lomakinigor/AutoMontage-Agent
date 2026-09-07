@@ -1,8 +1,37 @@
 const { test, expect } = require('playwright/test');
 const { mockBrollReview } = require('./helpers/broll-review-project');
+const { createPexelsProvider } = require('../scripts/broll/pexels');
+const { createCandidateStore } = require('../scripts/broll/candidates');
 let fixture;
 test.afterEach(async () => { if (fixture) await fixture.close(); fixture = null; });
 async function open(page, options) { fixture = await mockBrollReview(options); await page.goto(fixture.url); await expect(page.locator('[data-review-ready]')).toBeVisible(); }
+test('default Pexels normalization yields a playable local candidate before selection', async ({ page }) => {
+  const provider = createPexelsProvider({ apiKey: 'fixture-api-secret', request: async () => ({
+    bytes: Buffer.from(JSON.stringify({ videos: [{
+      id: 91, width: 1920, height: 1080, duration: 4,
+      url: 'https://www.pexels.com/video/forest-91/',
+      user: { name: 'Fixture Author', url: 'https://www.pexels.com/@fixture' },
+      image: 'https://images.pexels.com/photos/91/tiny.jpg',
+      video_files: [
+        { id: 911, width: 1920, height: 1080, file_type: 'video/mp4', link: 'https://videos.pexels.com/video-files/91/full.mp4' },
+        { id: 912, width: 640, height: 360, file_type: 'video/mp4', link: 'https://videos.pexels.com/video-files/91/small.mp4' },
+      ],
+    }] })),
+  }) });
+  const query = { queryOriginal: 'лес', queryEnglish: 'forest walk', mediaKind: 'video' };
+  const found = await provider.search(query);
+  const shelf = createCandidateStore().replace({ sceneIndex: 0, query, candidates: found.candidates });
+  await open(page);
+  fixture.cards.splice(0, fixture.cards.length, ...shelf.candidates);
+  await page.getByRole('button', { name: 'Подобрать B-roll', exact: true }).click();
+  const video = page.locator('[data-broll-candidate] video');
+  await expect(video).toHaveCount(1);
+  await expect(video).toHaveAttribute('src', /\/media\/broll-candidate\/[a-f0-9]+\/preview\?token=/);
+  await video.evaluate(element => element.play());
+  await expect.poll(() => video.evaluate(element => element.currentTime)).toBeGreaterThan(0);
+  expect(found.candidates[0].width).toBe(1920);
+  expect(fixture.calls.filter(call => call.pathname === '/api/broll/select')).toHaveLength(0);
+});
 test('pending intent searches bounded safe cards, rejects and pages; selects only opaque clicked ID', async ({ page }) => {
   await open(page);
   await expect(page.getByText('Мы идём по лесу', { exact: true })).toBeVisible();

@@ -129,7 +129,7 @@ function normalizeCandidate(item, search) {
     if (
       !Number.isFinite(durationSec) ||
       durationSec <= 0 ||
-      durationSec > 86400 ||
+      durationSec > 1800 ||
       durationSec < (search.minDurationSec || 0)
     )
       return null;
@@ -141,11 +141,13 @@ function normalizeCandidate(item, search) {
         Number.isSafeInteger(f.id) &&
         f.file_type === 'video/mp4' &&
         safeUrl(f.link, VIDEO_HOSTS, /\.mp4$/i) &&
-        eligible(f.width, f.height, {}),
+        eligible(f.width, f.height, {}) &&
+        f.width <= 4096 && f.height <= 4096 &&
+        f.width * f.height <= 8847360,
     );
     const selected = files
       .filter((f) => eligible(f.width, f.height, search))
-      .sort((a, b) => a.width * a.height - b.width * b.height)[0];
+      .sort((a, b) => b.width * b.height - a.width * a.height)[0];
     if (!selected) return null;
     rendition = {
       id: String(selected.id),

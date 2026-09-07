@@ -149,6 +149,40 @@ test('video never previews full-only rendition and rejects hostile media', async
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].previewUrl, null);
 });
+test('default video search selects full quality and keeps a distinct bounded preview', async () => {
+  const provider = createPexelsProvider({
+    apiKey: 'fixture-api-secret',
+    request: async () => ({ bytes: Buffer.from(JSON.stringify({ videos: [{
+      ...video,
+      video_files: [
+        ...video.video_files,
+        { ...video.video_files[0], id: 23, width: 7680, height: 4320,
+          link: 'https://videos.pexels.com/video-files/2/oversized.mp4' },
+      ],
+    }] })) }),
+  });
+  const { candidates } = await provider.search({
+    queryOriginal: 'кот', queryEnglish: 'cat', mediaKind: 'video',
+  });
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].rendition.id, '21');
+  assert.equal(candidates[0].width, 1920);
+  assert.equal(candidates[0].downloadUrl, video.video_files[0].link);
+  assert.equal(candidates[0].previewUrl, video.video_files[1].link);
+});
+test('video search rejects renditions outside local importer geometry and duration limits', async () => {
+  const provider = createPexelsProvider({
+    apiKey: 'fixture-api-secret',
+    request: async () => ({ bytes: Buffer.from(JSON.stringify({ videos: [
+      { ...video, duration: 1801 },
+      { ...video, id: 3, video_files: [{ ...video.video_files[0], width: 4096, height: 4096 }] },
+      { ...video, id: 4, video_files: [{ ...video.video_files[0], width: 4097, height: 1000 }] },
+    ] })) }),
+  });
+  assert.deepEqual((await provider.search({
+    queryOriginal: 'кот', queryEnglish: 'cat', mediaKind: 'video',
+  })).candidates, []);
+});
 test('successful provider payload cannot echo key through metadata', async () => {
   const secret = 'do-not-echo-secret';
   const provider = createPexelsProvider({
