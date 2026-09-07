@@ -85,3 +85,35 @@ for (const [name, build] of Object.entries(builders)) {
     });
   }
 }
+
+for (const filename of ['.env', '.env.local']) {
+  test(`horizontal preview shell script excludes private ${filename} keys`, { skip: process.platform === 'win32' }, (t) => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'automontage shell env '));
+    t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(fixture, 'scripts'));
+    fs.mkdirSync(path.join(fixture, 'config'));
+    fs.mkdirSync(path.join(fixture, 'bin'));
+    fs.copyFileSync(path.join(ROOT, 'scripts/run-preview-h.sh'), path.join(fixture, 'scripts/run-preview-h.sh'));
+    fs.copyFileSync(path.join(ROOT, 'config/remotion-public.env'), path.join(fixture, 'config/remotion-public.env'));
+    const capture = path.join(fixture, 'argv.json');
+    // Stop at the first command: exercise real shell expansion but never render,
+    // finish, mix user music, or download an executable through npx.
+    for (const executable of ['node', 'npx']) {
+      fs.writeFileSync(path.join(fixture, 'bin', executable), `#!${process.execPath}\n`
+        + `require('node:fs').writeFileSync(${JSON.stringify(capture)}, JSON.stringify(process.argv.slice(2)));\nprocess.exit(77);\n`);
+      fs.chmodSync(path.join(fixture, 'bin', executable), 0o755);
+    }
+    const run = spawnSync('bash', [path.join(fixture, 'scripts/run-preview-h.sh')], {
+      encoding: 'utf8', env: { PATH: `${path.join(fixture, 'bin')}${path.delimiter}${process.env.PATH}` },
+    });
+    assert.equal(run.status, 77, run.stderr);
+    const argv = JSON.parse(fs.readFileSync(capture, 'utf8'));
+    const result = browserEnvironment(t, argv, filename);
+    assert.equal(result.leakedProvider, false);
+    assert.equal(result.leakedPrivate, false);
+    assert.equal(result.publicProcess, 'public-process-value');
+    assert.deepEqual(result.positionals, ['render', 'PreviewH', '/tmp/preview_h_raw.mp4']);
+    assert.equal(result.envFile, path.join(fixture, 'config/remotion-public.env'));
+    assert.equal(argv[0], 'node_modules/@remotion/cli/remotion-cli.js');
+  });
+}
