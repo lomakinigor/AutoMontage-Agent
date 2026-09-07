@@ -16,16 +16,22 @@ function runMediaProcess({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   maxStdoutBytes = DEFAULT_OUTPUT_BYTES,
   maxStderrBytes = DEFAULT_OUTPUT_BYTES,
+  stdin = null,
+  stdoutEncoding = 'utf8',
   terminationGraceMs = DEFAULT_TERMINATION_GRACE_MS,
   spawnImpl = spawn,
 }) {
   return new Promise((resolve, reject) => {
     let child;
     try {
+      if (!(stdin === null || Buffer.isBuffer(stdin))
+        || ![null, 'utf8'].includes(stdoutEncoding)) {
+        throw processError('MEDIA_PROCESS_INPUT_INVALID', `invalid ${command} process input`);
+      }
       child = spawnImpl(command, args, {
         cwd,
         shell: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       });
     } catch (error) {
       reject(processError('MEDIA_PROCESS_SPAWN', `cannot start ${command}`, { cause: error }));
@@ -66,6 +72,12 @@ function runMediaProcess({
     };
     child.stdout?.on('data', collect(stdoutChunks, maxStdoutBytes, 'stdout'));
     child.stderr?.on('data', collect(stderrChunks, maxStderrBytes, 'stderr'));
+    if (stdin !== null) {
+      child.stdin?.on('error', (error) => terminate(processError(
+        'MEDIA_PROCESS_STDIN', `${command} stdin failed`, { cause: error },
+      )));
+      child.stdin?.end(stdin);
+    }
 
     const onAbort = () => terminate(processError('MEDIA_PROCESS_ABORTED', `${command} aborted`));
     if (signal?.aborted) onAbort();
@@ -85,7 +97,8 @@ function runMediaProcess({
       if (timer) clearTimeout(timer);
       if (escalationTimer) clearTimeout(escalationTimer);
       signal?.removeEventListener('abort', onAbort);
-      const stdout = Buffer.concat(stdoutChunks).toString('utf8');
+      const stdoutBuffer = Buffer.concat(stdoutChunks);
+      const stdout = stdoutEncoding === null ? stdoutBuffer : stdoutBuffer.toString('utf8');
       const stderr = Buffer.concat(stderrChunks).toString('utf8');
       if (pendingError) {
         pendingError.stdout = stdout;

@@ -8,6 +8,8 @@ const { IMAGE_MAX_BYTES } = require('./media-limits');
 const { openReadOnlyFlags } = require('../filesystem-capabilities');
 const { sameOpenedFileSnapshot } = require('../media-probe');
 const crypto = require('node:crypto');
+const { browserProvenance } = require('../broll/provenance');
+const { hashTextScan } = require('../broll/text-scan');
 
 const HASH_BUFFER_BYTES = 64 * 1024;
 
@@ -229,6 +231,10 @@ function descriptor({ id, asset }) {
     capabilities: {
       ...asset.capabilities,
     },
+    ...(asset.provenance ? {
+      provenance: browserProvenance(asset.provenance),
+      textScan: { ...asset.textScan, sha256: hashTextScan(asset.textScan) },
+    } : {}),
   };
 }
 

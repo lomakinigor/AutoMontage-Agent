@@ -278,6 +278,36 @@ test('import publishes video when ffprobe average FPS is 0/0 but real FPS is val
   assert.equal(fs.existsSync(path.join(path.dirname(result.filePath), 'asset.json')), true);
 });
 
+test('discovery import publishes v3 evidence while manual import remains v2', async (t) => {
+  const projectDir = tempProject(t);
+  const provenance = {
+    provider: 'pexels', providerAssetId: '123',
+    sourcePage: 'https://www.pexels.com/photo/example-123/',
+    author: { name: 'Jane', url: 'https://www.pexels.com/@jane/' },
+    license: { name: 'Pexels License', url: 'https://www.pexels.com/license/' },
+    queryOriginal: 'офис', queryEnglish: 'office',
+    retrievedAt: '2026-09-08T12:00:00.000Z',
+    rendition: { id: 'original', width: 320, height: 180, mimeType: 'image/png' },
+  };
+  const textScan = {
+    status: 'needs-review', text: 'ACME', reasons: ['embedded-text-detected'], engine: 'tesseract',
+  };
+  const result = await importReviewMedia({
+    request: Readable.from([Buffer.from('x')]), projectDir, outputFps: 25,
+    headers: rawHeaders('found.png', 'image/png', 1), controller: createImportController(),
+    statfsImpl: () => ({ bavail: 10n ** 12n, bsize: 4096n }), randomId: () => UUID,
+    runMediaProcessImpl: fakeProcessor({ source: probeJson({ kind: 'image' }) }),
+    provenance, scanEmbeddedTextImpl: async (input) => {
+      assert.equal(input.filePath.endsWith('/bundle/media.webp'), true);
+      return textScan;
+    },
+  });
+  const published = JSON.parse(fs.readFileSync(path.join(path.dirname(result.filePath), 'asset.json')));
+  assert.equal(published.version, 3);
+  assert.deepEqual(published.provenance, provenance);
+  assert.deepEqual(published.textScan, textScan);
+});
+
 test('video normalization uses visual duration, even padding, explicit audio duration, and hard encoder bounds', async (t) => {
   const projectDir = tempProject(t);
   const calls = [];

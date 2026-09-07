@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { claimAndRemoveOwnedPath } = require('../project/owned-removal');
+const { validateProvenance } = require('../broll/provenance');
 const {
   openReadOnlyFlags,
   privateModeMatches,
@@ -13,10 +14,11 @@ const REQUIRED_KEYS_V1 = [
   'previewSha256', 'width', 'height', 'fps', 'durationSec', 'hasAudio',
 ];
 const REQUIRED_KEYS_V2 = [...REQUIRED_KEYS_V1, 'audioDurationSec'];
+const REQUIRED_KEYS_V3 = [...REQUIRED_KEYS_V2, 'provenance', 'textScan'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const CONTROL = /[\p{Cc}]/u;
-const METADATA_MAX_BYTES = 16 * 1024;
+const METADATA_MAX_BYTES = 32 * 1024;
 const HASH_BUFFER_BYTES = 64 * 1024;
 const PUBLICATION_CLAIM_PURPOSE = 'review-media-import-publication';
 const PUBLICATION_CLAIM_KEYS = [
@@ -230,12 +232,13 @@ function parseImportedAssetMetadata({ bytes, expectedId } = {}) {
   } catch (_) {
     invalid('is invalid JSON');
   }
-  const requiredKeys = metadata?.version === 1 ? REQUIRED_KEYS_V1 : REQUIRED_KEYS_V2;
+  const requiredKeys = metadata?.version === 1 ? REQUIRED_KEYS_V1
+    : metadata?.version === 3 ? REQUIRED_KEYS_V3 : REQUIRED_KEYS_V2;
   if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)
     || !isDeepStrictEqual(Object.keys(metadata).sort(), [...requiredKeys].sort())) {
     invalid('shape is invalid');
   }
-  if (!UUID.test(expectedId) || ![1, 2].includes(metadata.version) || metadata.id !== expectedId) {
+  if (!UUID.test(expectedId) || ![1, 2, 3].includes(metadata.version) || metadata.id !== expectedId) {
     invalid('id is invalid');
   }
   if (typeof metadata.label !== 'string' || metadata.label.length === 0
@@ -244,6 +247,24 @@ function parseImportedAssetMetadata({ bytes, expectedId } = {}) {
     invalid('label is invalid');
   }
   if (!['image', 'video'].includes(metadata.mediaKind)) invalid('media kind is invalid');
+  if (metadata.version === 3) {
+    try { validateProvenance(metadata.provenance); } catch (_) { invalid('provenance is invalid'); }
+    const scan = metadata.textScan;
+    if (scan === null || typeof scan !== 'object' || Array.isArray(scan)
+      || !isDeepStrictEqual(Object.keys(scan).sort(), ['engine', 'reasons', 'status', 'text'])
+      || !['clear', 'needs-review', 'unavailable'].includes(scan.status)
+      || typeof scan.text !== 'string' || scan.text !== scan.text.normalize('NFKC')
+      || CONTROL.test(scan.text) || Buffer.byteLength(scan.text, 'utf8') > 4096
+      || !Array.isArray(scan.reasons) || scan.reasons.length > 8
+      || scan.reasons.some((reason) => typeof reason !== 'string'
+        || !/^[a-z0-9-]{1,64}$/.test(reason))
+      || typeof scan.engine !== 'string' || !/^[a-z0-9.-]{1,64}$/.test(scan.engine)
+      || (scan.status === 'clear' && (scan.text !== '' || scan.reasons.length !== 0))
+      || (scan.status === 'needs-review' && scan.text.length === 0)
+      || (scan.status === 'unavailable' && (scan.text !== '' || scan.reasons.length === 0))) {
+      invalid('text scan is invalid');
+    }
+  }
   if (!SHA256.test(metadata.canonicalSha256)
     || !(metadata.previewSha256 === null || SHA256.test(metadata.previewSha256))) {
     invalid('hash is invalid');
@@ -256,7 +277,7 @@ function parseImportedAssetMetadata({ bytes, expectedId } = {}) {
   if (metadata.mediaKind === 'image') {
     if (metadata.previewSha256 !== null || metadata.fps !== 0 || metadata.durationSec !== 0
       || metadata.hasAudio !== false
-      || (metadata.version === 2 && metadata.audioDurationSec !== null)) {
+      || (metadata.version >= 2 && metadata.audioDurationSec !== null)) {
       invalid('image fields are invalid');
     }
   } else if (metadata.version === 1) {
@@ -318,8 +339,12 @@ function buildImportedAssetRecord({ projectDir, mediaType, id, verified }) {
     height: metadata.height,
     fps: metadata.fps,
     durationSec: metadata.durationSec,
-    audioDurationSec: metadata.version === 2 ? metadata.audioDurationSec : null,
+    audioDurationSec: metadata.version >= 2 ? metadata.audioDurationSec : null,
     hasAudio: metadata.hasAudio,
+    ...(metadata.version === 3 ? {
+      provenance: structuredClone(metadata.provenance),
+      textScan: structuredClone(metadata.textScan),
+    } : {}),
     capabilities: {
       preview: true,
       brollImage: metadata.mediaKind === 'image',
