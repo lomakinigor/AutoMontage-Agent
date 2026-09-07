@@ -125,11 +125,22 @@ export function createBrollDiscoveryUI({ request, getState, queueCommand, refres
       select.addEventListener('click', async () => {
         let assetId;
         await run(e, async () => {
-          e.status.textContent = 'Загружаем и проверяем выбранное медиа…';
-          const result = await request('/api/broll/select', { ...base(), sceneIndex: index, searchId: e.searchId, candidateId: candidate.id });
-          await refresh(result.state);
-          assetId = result.assetId;
-          e.status.textContent = 'Медиа добавлено. Сохраните правки, чтобы создать новую ревизию.';
+          const startedAt = Date.now();
+          const mediaLabel = candidate.mediaKind === 'video' ? 'видео' : 'изображение';
+          const showProgress = () => {
+            const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+            e.status.textContent = `Проверяем ${mediaLabel} локально: загрузка, decode, нормализация и OCR · прошло ${elapsedSec} сек.`;
+          };
+          showProgress();
+          const progressTimer = window.setInterval(showProgress, 1000);
+          try {
+            const result = await request('/api/broll/select', { ...base(), sceneIndex: index, searchId: e.searchId, candidateId: candidate.id });
+            await refresh(result.state);
+            assetId = result.assetId;
+            e.status.textContent = 'Медиа добавлено. Сохраните правки, чтобы создать новую ревизию.';
+          } finally {
+            window.clearInterval(progressTimer);
+          }
         }, 'Не удалось выбрать медиа. Предыдущее медиа сохранено.');
         if (assetId) queueCommand({ type: 'replace-broll', sceneIndex: index, assetId });
       });

@@ -68,6 +68,16 @@ test('photo tab and filters, loading, missing key and read-only', async ({ page 
   await open(page, { editable: false });
   await expect(page.getByRole('button', { name: 'Подобрать B-roll', exact: true })).toHaveCount(0);
 });
+test('selected video shows elapsed processing progress until the local asset is ready', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Подобрать B-roll', exact: true }).click();
+  await expect(page.locator('[data-broll-candidate]')).toHaveCount(12);
+  fixture.settings.delay = 1600;
+  await page.getByRole('button', { name: 'Выбрать', exact: true }).first().click();
+  await expect(page.getByText(/Проверяем видео локально.*прошло 1 сек/)).toBeVisible();
+  await expect(page.locator('[data-broll-select]')).toHaveValue('asset-1');
+  await expect(page.getByText('Медиа добавлено. Сохраните правки, чтобы создать новую ревизию.', { exact: true })).toBeVisible();
+});
 test('query and text acknowledgement participate in undo redo save; failed selection retains media', async ({ page }) => {
   await open(page);
   await page.getByLabel('Запрос на английском', { exact: true }).fill('green forest');
