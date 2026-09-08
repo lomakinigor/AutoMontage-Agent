@@ -1,0 +1,35 @@
+name: Sync AutoMontage upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '43 */6 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-automontage-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge public upstream when it changed
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/mcdenil-skills/AutoMontage-Agent.git 2>/dev/null || true
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo 'Already up to date.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-edit upstream/main
+          git push origin HEAD:main
