@@ -1,8 +1,8 @@
 # Монтаж в браузере: Review Workbench
 
 Эта инструкция описывает полный путь от черновика монтажного листа до готового MP4 через
-локальное окно **«Проверка монтажа»**. Она актуальна для
-[AutoMontage-Agent v1.6.0](https://github.com/mcdenil-skills/AutoMontage-Agent/releases/tag/v1.6.0).
+локальное окно **«Проверка монтажа»**. Она актуальна для исходников AutoMontage-Agent v1.6.0.
+Опубликованные версии находятся в [GitHub Releases](https://github.com/mcdenil-skills/AutoMontage-Agent/releases).
 Если вы впервые запускаете монтаж, начните с короткой инструкции
 [«Монтаж от видео до готового MP4»](MONTAGE-GUIDE.md), а сюда возвращайтесь за подробностями.
 

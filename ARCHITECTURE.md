@@ -635,8 +635,9 @@ QA и `automontage demo` работают без provider API-ключей.
 - Release checker читает committed Git-объект, а не рабочую папку; smoke подтверждает оба
   публичных render path и после них сверяет hashes защищённых transcript/captions fixtures.
 - Временное принятие dependency advisory допустимо только через неистёкшую машинно
-  проверяемую запись в `SECURITY.md`: review date совпадает с датой текущего release, не лежит
-  в будущем, а документированная цепочка точно совпадает с candidate `package-lock.json`.
+  проверяемую запись в `SECURITY.md`: review date совпадает с датой текущего release, уже
+  наступила хотя бы в UTC+14, а документированная цепочка точно совпадает с candidate
+  `package-lock.json`.
 
 ## 10. Как расширять
 
