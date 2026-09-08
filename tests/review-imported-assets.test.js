@@ -38,6 +38,23 @@ function metadata(overrides = {}) {
   };
 }
 
+function discoveryMetadata(overrides = {}) {
+  return metadata({
+    version: 3,
+    provenance: {
+      provider: 'pexels', providerAssetId: '123',
+      sourcePage: 'https://www.pexels.com/video/example-123/',
+      author: { name: 'Jane', url: 'https://www.pexels.com/@jane/' },
+      license: { name: 'Pexels License', url: 'https://www.pexels.com/license/' },
+      queryOriginal: 'офис', queryEnglish: 'office',
+      retrievedAt: '2026-09-08T12:00:00.000Z',
+      rendition: { id: '99', width: 1920, height: 1080, mimeType: 'video/mp4' },
+    },
+    textScan: { status: 'needs-review', text: 'ACME', reasons: ['embedded-text-detected'], engine: 'tesseract' },
+    ...overrides,
+  });
+}
+
 function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value)}\n`);
 }
@@ -103,6 +120,42 @@ test('metadata v2 requires explicit audio duration and legacy video stays unavai
     bytes: Buffer.from(JSON.stringify(legacyImage)),
     expectedId: UUID,
   }).mediaKind, 'image');
+});
+
+test('metadata v3 roundtrips immutable provenance and text evidence', () => {
+  const current = discoveryMetadata();
+  assert.deepEqual(parseImportedAssetMetadata({
+    bytes: Buffer.from(JSON.stringify(current)), expectedId: UUID,
+  }), current);
+  assert.throws(() => parseImportedAssetMetadata({
+    bytes: Buffer.from(JSON.stringify(discoveryMetadata({
+      provenance: { ...current.provenance, downloadUrl: 'https://example.com/private.mp4' },
+    }))), expectedId: UUID,
+  }), /provenance/);
+  assert.throws(() => parseImportedAssetMetadata({
+    bytes: Buffer.from(JSON.stringify(discoveryMetadata({
+      textScan: { ...current.textScan, text: 'bad\ntext' },
+    }))), expectedId: UUID,
+  }), /text scan/);
+  assert.throws(() => parseImportedAssetMetadata({
+    bytes: Buffer.from(JSON.stringify(discoveryMetadata({
+      textScan: { ...current.textScan, text: 'hidden\u200bmark' },
+    }))), expectedId: UUID,
+  }), /text scan/);
+});
+
+test('both asset descriptor paths expose display-safe v3 evidence summaries', (t) => {
+  const projectDir = makeProject(t);
+  const bundle = writeBundle(projectDir, { metadataOverrides: discoveryMetadata() });
+  const record = inspectImportedAssetBundle({ projectDir, assetDirectory: bundle.mediaDirectory });
+  assert.deepEqual(record.provenance, discoveryMetadata().provenance);
+  assert.match(record.scanSha256, /^[a-f0-9]{64}$/);
+  const listed = listReviewAssets({ root: projectDir, workspace: { dir: projectDir } });
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].provenance.provider, 'pexels');
+  assert.equal(listed[0].textScan.status, 'needs-review');
+  assert.equal(Object.hasOwn(listed[0].textScan, 'sha256'), false);
+  assert.equal(JSON.stringify(listed[0]).includes('downloadUrl'), false);
 });
 
 function directoryIdentity(filePath) {

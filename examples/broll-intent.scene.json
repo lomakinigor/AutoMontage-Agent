@@ -1,0 +1,13 @@
+{
+  "scene": "broll",
+  "start": 12,
+  "end": 17,
+  "headCream": "РАЗБИВАЕМ",
+  "headOrange": "НА ШАГИ",
+  "brollIntent": {
+    "goal": "Показать спокойную работу с задачами",
+    "sourceText": "Я раскладываю большую задачу на маленькие шаги",
+    "queryOriginal": "человек планирует задачи за ноутбуком",
+    "queryEnglish": "person planning tasks on laptop"
+  }
+}

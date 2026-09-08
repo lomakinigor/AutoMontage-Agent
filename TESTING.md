@@ -43,6 +43,15 @@ npm test
   global ripple, opaque asset handles, fit/start/audio commands, покадровый clip overrun,
   frame/word timing reasons, межпроцессный project lease, in-memory undo/redo, новая draft-пара
   на Save, manifest-last visibility и byte-identical approved;
+- discovery B-roll: draft-only intent и заглушка preview, официальный Pexels photo/video contract
+  через локальный mock HTTP server, HTTPS/DNS pinning/redirect SSRF, ограниченный поток/MIME,
+  timeout/abort/truncation, отсутствие ключа и отсутствие его утечки в ошибках/карточках;
+- candidate allowlist: session/scene/query/generation/TTL, cross-session и подменённые ID,
+  preview без скачивания полного файла, загрузка только выбранной rendition, stale Save/import;
+- provenance v3 с сохранением v1/v2, NFKC/UTF-8 bounds, нативный OCR изображения и трёх кадров,
+  недоступный OCR, поздняя отмена, hash-bound разрешение текста и его сброс при замене;
+- обязательный текущий полный preview для discovery approval, отказ excerpt/stale/tampered
+  preview, явное подтверждение просмотра, OCR/intent gate и race перед публикацией;
 - media import: exact-length streaming в owned quarantine, type/size/geometry/duration/disk
   limits, separate visual/audio stream timing without container fallback, even padding after
   autorotate, encoder/output/copy quotas, phase `statfs`, abort/semaphore, real ffprobe/decode,
@@ -123,7 +132,7 @@ path, canonical media reference и SHA-256.
 Для золотого пути свежего клона отдельно проверь:
 
 ```bash
-git clone https://github.com/Ntmib/AutoMontage-Agent.git
+git clone https://github.com/mcdenil-skills/AutoMontage-Agent.git
 cd AutoMontage-Agent
 npm ci
 npm run doctor
@@ -240,8 +249,10 @@ bytes. В `--edit` перенеси одну общую границу, загр
 что upload ничего не выбрал сам, назначь четыре b-roll сцены (`image`, `mute`, `mix`, повторный
 `replace`) и Save; должны появиться одна новая draft Markdown/JSON-пара и одна manifest entry,
 а approved hash остаться прежним.
-Утверждай новую draft только существующим `approve-brief.js`, затем рендери `--brief` и выполни
-полный decode, ffprobe и визуальную проверку контрольных кадров. Review сам approval/render не делает.
+Утверждай новую draft отдельным явным действием в Review либо через `approve-brief.js`, затем
+рендери `--brief` и выполни полный decode, ffprobe и визуальную проверку контрольных кадров.
+Для discovery нужен текущий полный preview и подтверждение просмотра. Поиск, импорт и Save
+никогда не запускают approval или final render.
 7. Убедиться, что повторный рендер создаёт новый `renders/vNN-<label>/`, не стирая прошлый.
 8. Убедиться, что `final/<slug>.mp4` совпадает с последним успешным рендером.
 9. При искусственном сбое render/finish/music/publish проверить статус `failed`, прежние
@@ -285,6 +296,11 @@ File Provider обязаны показать вторую половину cust
 `replace` до новой revision/render, а допустимый interval проходит Save → approval → короткий
 Remotion render. Тест использует `AUTOMONTAGE_FFMPEG_DIR`, ffmpeg-full на macOS или системные
 ffmpeg/ffprobe и пропускается только если этих бинарников действительно нет.
+
+Реальные importer-регрессии генерируют JPEG и VP8/Opus WebM локально в временной папке,
+проверяют полный decode нормализованных master/proxy и SHA-256. Настоящий WebM, переименованный
+в JPEG, отклоняется по содержимому. Нужна полная сборка FFmpeg с `libwebp`, `libx264`, `libvpx`
+и `libopus`: урезанный бинарник FFmpeg внутри Remotion не заменяет зависимость для импорта.
 
 `review-media-import.test.js` отдельно проходит каждую границу свободного места: initial,
 master, proxy, preview publication и canonical publication. Для каждой ожидаются один `507`,
@@ -355,8 +371,8 @@ node scripts/benchmark-preview.js \
 
 ## 7. CI
 
-`.github/workflows/ci.yml` сохраняет обычный Node 20 job с `npm ci`, `npm test` и
-`npm run check:release` на pull request и push в `main`. Отдельный browser job выполняет
+`.github/workflows/ci.yml` сохраняет обычный Node 20 job с `npm ci`, `npm run check:privacy`,
+`npm test` и `npm run check:release` на pull request и push в `main`. Отдельный browser job выполняет
 `npm ci --no-audit --no-fund`, устанавливает Playwright Chromium и запускает
 `npm run test:review-ui`. Оба Linux job явно устанавливают системный FFmpeg, проверяют
 `ffmpeg`, `ffprobe`, `libwebp`, `libx264`, `libvpx`, `libopus` и AAC до тестов: отсутствие
@@ -365,7 +381,8 @@ node scripts/benchmark-preview.js \
 обязательной проверкой checksum и запускает только переносимые probe/import/recovery/Save/
 approval/final-publication tests; полный POSIX-контракт остаётся в Linux `npm test`.
 Release-checker проверяет committed current tree без base и работает с shallow checkout.
-Отдельный job Gitleaks сканирует полную Git-историю на секреты.
+Отдельный job устанавливает закреплённый Gitleaks CLI и сканирует полную Git-историю на секреты
+без отдельной лицензии GitHub App для организации.
 Полные рендеры в CI не запускаются: им нужны тяжёлые медиа, ffmpeg/Whisper-модели и
 иногда приватные темы. Их проверяют локально по разделам выше.
 
@@ -376,6 +393,8 @@ npm run check:release
 npm run check:release -- --tree HEAD --base origin/main
 npm run check:release -- --release
 npm run smoke:release
+npm run test:review-ui
+npm pack --dry-run
 ```
 
 Перед commit можно проверить именно staged candidate, а не рабочую папку:
@@ -412,16 +431,57 @@ A/V drift меньше 80 мс, ровно 75 кадров и полный decod
 осмотра, печатает два абсолютных final path и подтверждает неизменность защищённых
 `src/data/captions.js` и `src/data/transcript.json`.
 
+### Чистый клон кандидата
+
+Финальная проверка выполняется не в рабочей папке, а из нового локального clone без hardlinks:
+
+```bash
+RELEASE_CHECK_DIR="$(mktemp -d)"
+git clone --local --no-hardlinks . "$RELEASE_CHECK_DIR/AutoMontage-Agent"
+cd "$RELEASE_CHECK_DIR/AutoMontage-Agent"
+npm ci --no-audit --no-fund
+npm run doctor
+npm run check:privacy
+npm run check:release
+npm audit --audit-level=high
+npm test
+npm run demo
+npm run smoke:release
+npm pack --dry-run
+```
+
+`tests/package-privacy.test.js` отдельно читает реальный npm packlist: публичные CLI, batch-guide,
+skill и `.env.example` обязаны присутствовать, а `docs/superpowers/`, project workspace, рендеры
+и локальная память обязаны отсутствовать. Это закрывает файлы, которые не отслеживаются Git, но
+физически лежат рядом с checkout и без `.npmignore` могли бы попасть в архив.
+
+Проверь начало, середину и конец neutral demo: в кадре и звуке не должно быть человека,
+клиентского скриншота, частной темы или логотипа без строки в `ASSETS.md`. В отчёт релиза
+попадают только общие результаты команд; локальные каталоги, имена исходников и hashes клиентов
+не копируются.
+
 ## 9. Проверка секретов и зависимостей
 
 ```bash
+npm run check:privacy                         # всё отслеживаемое публичное дерево
+node scripts/check-public-privacy.js --staged # точные bytes будущего коммита
 gitleaks git --staged --redact=100      # что готовится в ближайший коммит
 gitleaks git . --log-opts=--all --redact=100  # вся история и все локальные ветки
 npm audit                               # известные проблемы зависимостей
 ```
 
-Локальный `.githooks/pre-commit` выполняет первый скан автоматически. Активировать его
-один раз: `git config core.hooksPath .githooks`. Реальное совпадение нельзя добавлять в
+`check:privacy` блокирует клиентские project/output/memory-файлы, приватные `.env`, абсолютные
+локальные пути и бинарные медиа без полной шестиколоночной записи в `ASSETS.md`. Режим
+`--staged` читает содержимое прямо из Git index, поэтому безопасная незакоммиченная копия файла
+не может скрыть утечку в staged blob. Gitleaks решает другую задачу: ищет API-ключи, токены и
+пароли. Перед публичным коммитом обязательны обе независимые проверки.
+
+Перед публикацией npm-архива дополнительно запускай `npm pack --dry-run` и
+`node --test tests/package-privacy.test.js`: Git privacy gate проверяет репозиторий, но не является
+списком содержимого package tarball.
+
+Локальный `.githooks/pre-commit` сначала выполняет staged privacy-check, затем Gitleaks.
+Активировать hook один раз: `git config core.hooksPath .githooks`. Реальное совпадение нельзя добавлять в
 allowlist: сначала удалить секрет из staged-файлов и немедленно перевыпустить ключ, если
 он уже успел попасть в коммит или удалённый репозиторий.
 
@@ -437,3 +497,43 @@ high/critical. Исключение действительно только в �
 dependency tree, advisory severity или входа `--autotheme` документ и release gate нужно
 пересмотреть вместе. `npm audit fix --force`, major override и downgrade на 3.x не являются
 проверенным исправлением для этого релиза.
+
+
+## 10. B-roll Discovery: локальный acceptance
+
+Все быстрые контракты работают без ключа Pexels. HTTP fixtures проверяют официальный формат
+ответа через явно внедрённый тестовый transport; production host/DNS admission остаётся включён.
+В CI нет live-поиска, ключей и платных вызовов.
+
+```bash
+node --test tests/broll-intent.test.js
+node --test tests/broll-remote.test.js tests/broll-pexels.test.js tests/broll-candidates.test.js tests/broll-config.test.js
+node --test tests/broll-provenance.test.js tests/broll-text-scan.test.js tests/review-imported-assets.test.js tests/review-media-import.test.js tests/review-media-process.test.js
+node --test tests/broll-discovery.test.js tests/broll-review-security.test.js tests/broll-approval.test.js
+node --test tests/broll-preview-approval.test.js
+node --test tests/broll-render-env-security.test.js tests/env.test.js
+npm run test:review-ui
+node --test --test-concurrency=1 tests/broll-preview-e2e.test.js tests/video-broll-e2e.test.js tests/custom-face-media-real.test.js
+node scripts/broll/live-acceptance.js
+```
+
+Нужна полная сборка FFmpeg с WebP/H.264/VP8/Opus/AAC, а для нативного OCR - Tesseract с локальным
+`eng` language pack. На Ubuntu CI устанавливает `ffmpeg tesseract-ocr tesseract-ocr-eng`.
+Отсутствующий OCR не препятствует поиску/Save/preview, но даёт `unavailable` и требует явного
+разрешения после просмотра перед approval. Проверка отсутствующего инструмента выполняется
+отдельным тестом всегда; пропуск нативного OCR-теста должен быть явно отражён в отчёте.
+
+`npm run test:review-ui` включает прежний ручной импорт и новую полку. Настоящий E2E отдельно
+проверяет выбранный локальный asset, сохранение draft, excerpt/full Remotion, явный approval,
+final render и полный decode. Такие рендеры запускаются последовательно, чтобы не делить legacy
+render временные файлы. Успех mock-плеера не засчитывается как Remotion acceptance.
+
+Live-команда без ключа печатает ровно `SKIPPED: PEXELS_API_KEY is not configured`.
+Это единственный пропуск внешнего acceptance; локальные unit, HTTP contract и браузерные проверки
+продолжаются. При ключе команда выполняет бесплатный поиск фото/видео и ограниченный preview.
+Полную rendition она импортирует только при явном `--select image:<id>` или `--select video:<id>`
+и `--project-dir <fixture-project>`. Она не утверждает brief и не рендерит финал.
+
+Для необязательного semantic reranker есть отдельный [воспроизводимый эксперимент](docs/research/2026-09-08-broll-reranking-benchmark.md).
+Его Python/model dependencies не входят в основной монтаж или CI; текущий default - релевантность
+провайдера. Openverse-эксперимент не заменяет live acceptance Pexels.

@@ -13,6 +13,7 @@ const {
 } = require('../filesystem-capabilities');
 const { probeOpenedMedia } = require('../media-probe');
 const {
+  approveBrief,
   acquireProjectMutationLease,
   nextBriefPaths,
   readProjectManifest,
@@ -43,6 +44,12 @@ const {
   loadReviewBase,
 } = require('./model');
 const { auditBriefTiming } = require('./timing-audit');
+const { isDeepStrictEqual } = require('node:util');
+const { createPreviewJobs } = require('./preview-jobs');
+const { createBrollDiscovery } = require('./broll-discovery');
+const { createPexelsProvider } = require('../broll/pexels');
+const { loadBrollConfig } = require('../broll/config');
+const { browserProvenance } = require('../broll/provenance');
 const { ensureWaveformPreview } = require('./waveform');
 
 const BODY_LIMIT = 256 * 1024;
@@ -53,6 +60,7 @@ const STATIC_FILES = new Map([
   ['/index.html', 'index.html'],
   ['/app.js', 'app.js'],
   ['/media-import.js', 'media-import.js'],
+  ['/broll-discovery.js', 'broll-discovery.js'],
   ['/timeline.js', 'timeline.js'],
   ['/player-sync.js', 'player-sync.js'],
   ['/styles.css', 'styles.css'],
@@ -299,6 +307,9 @@ function sameAuthoritativeAssetRecord(left, right) {
   ]) {
     if (left[field] !== right[field]) return false;
   }
+  if (!isDeepStrictEqual(left.provenance, right.provenance)
+    || !isDeepStrictEqual(left.textScan, right.textScan)
+    || left.scanSha256 !== right.scanSha256) return false;
   for (const capability of ['preview', 'brollImage', 'brollVideo']) {
     if (left.capabilities?.[capability] !== right.capabilities?.[capability]) return false;
   }
@@ -333,6 +344,7 @@ function descriptorForAsset(id, asset) {
       hasAudio: asset.hasAudio,
     } : {}),
     capabilities: { ...asset.capabilities },
+    ...(asset.provenance ? { provenance: browserProvenance(asset.provenance), textScan: structuredClone(asset.textScan) } : {}),
   };
 }
 
@@ -380,7 +392,7 @@ function refreshAssetFiles({ root, projectDir, runtime }) {
     const previous = previousByIdentity.get(assetIdentityKey(candidate));
     let id;
     if (previous) {
-      if (!sameAssetIdentity(previous.asset, candidate)) {
+      if (!sameAuthoritativeAssetRecord(previous.asset, candidate)) {
         rejectRequest(409, 'REVIEW_MEDIA_IDENTITY_CHANGED');
       }
       id = previous.id;
@@ -408,7 +420,7 @@ function rebuildEditAssetFiles({ root, projectDir, runtime }) {
   let nextAssetId = runtime.nextAssetId;
   for (const candidate of currentCandidates) {
     const previous = previousByIdentity.get(assetIdentityKey(candidate));
-    if (previous && !sameAssetIdentity(previous.asset, candidate)) {
+    if (previous && !sameAuthoritativeAssetRecord(previous.asset, candidate)) {
       unavailableIds.add(previous.id);
       continue;
     }
@@ -722,7 +734,7 @@ function assertOtherRegisteredAssetIdentities({ root, projectDir, assetFiles, ca
   for (const [id, registered] of assetFiles) {
     if (selectedIds.has(id)) continue;
     const current = currentByKey.get(assetIdentityKey(registered));
-    if (!sameAssetIdentity(registered, current)) {
+    if (!sameAuthoritativeAssetRecord(registered, current)) {
       rejectRequest(409, 'REVIEW_MEDIA_IDENTITY_CHANGED');
     }
   }
@@ -882,7 +894,7 @@ function currentMaterializationAsset({
   if (!registered) return null;
   const beforeScan = scanAssetFiles({ root, projectDir: current.workspace.dir })
     .find((asset) => assetIdentityKey(asset) === assetIdentityKey(registered));
-  if (!beforeScan || !sameAssetIdentity(registered, beforeScan)) return null;
+  if (!beforeScan || !sameAuthoritativeAssetRecord(registered, beforeScan)) return null;
   for (const field of [
     'mediaKind', 'reference', 'canonicalSha256', 'width', 'height', 'fps',
     'durationSec', 'audioDurationSec', 'hasAudio',
@@ -906,7 +918,7 @@ function currentMaterializationAsset({
       || digest !== beforeScan.canonicalSha256) return null;
     const afterScan = scanAssetFiles({ root, projectDir: current.workspace.dir })
       .find((asset) => assetIdentityKey(asset) === assetIdentityKey(registered));
-    if (!afterScan || !sameAssetIdentity(registered, afterScan)
+    if (!afterScan || !sameAuthoritativeAssetRecord(registered, afterScan)
       || afterScan.canonicalSha256 !== digest) return null;
     for (const field of [
       'mediaKind', 'reference', 'canonicalSha256', 'width', 'height',
@@ -948,6 +960,10 @@ function materializeReviewAssets({
       rejectRequest(422, 'UNRESOLVED_REVIEW_ASSET');
     }
     const registered = verified.asset;
+    if (registered.provenance) materialized.brollReviewPolicy = 'preview-required';
+    if (scene.brollReview === true && registered.provenance && registered.scanSha256) {
+      scene.brollReview = {assetSha256:registered.canonicalSha256,scanSha256:registered.scanSha256,allowEmbeddedText:true};
+    } else delete scene.brollReview;
     if (selected.kind === 'video') {
       const compositionFps = materialized.output.fps;
       const trimStartFrame = Math.round(selected.trimStartSec * compositionFps);
@@ -995,7 +1011,7 @@ function materializeReviewAssets({
 function browserSafeDiff(diff, assetFiles) {
   return diff.map((change) => {
     if (change.kind === 'boundary') return { ...change };
-    if (!['asset', 'fit', 'clip-start', 'audio-mode'].includes(change.kind)) {
+    if (!['asset', 'fit', 'clip-start', 'audio-mode', 'broll-query', 'embedded-text'].includes(change.kind)) {
       throw new Error('review diff contains an unsafe change');
     }
     if (change.kind !== 'asset' || change.from === null || isOpaqueAssetId(change.from)) {
@@ -1057,6 +1073,7 @@ function handleEditRoute({
   probeReviewMediaImpl,
 }) {
   if (!editable) rejectRequest(405, 'READ_ONLY_REVIEW');
+  if (runtime.previewJobs.busy) rejectRequest(409, 'PREVIEW_BUSY');
   const body = parseEditBody(bodyBytes);
   const replay = replayReviewEdit({ root, projectDir, runtime, body, sourceFile });
   if (pathname === '/api/validate') {
@@ -1161,6 +1178,9 @@ async function routeRequest({
   }
   const pathname = url.pathname;
   const protectedRoute = pathname.startsWith('/api/') || pathname.startsWith('/media/');
+  if (protectedRoute && request.headers.host !== new URL(origin).host) {
+    sendError(response, 403); return;
+  }
   if (protectedRoute && !isAuthenticated(request, url, token)) {
     sendError(response, 401, request.method === 'HEAD');
     return;
@@ -1177,6 +1197,7 @@ async function routeRequest({
     sendError(response, 403);
     return;
   }
+  if (runtime.previewJobs.busy && request.method === 'POST') { rejectRequest(409, 'PREVIEW_BUSY'); }
   if (pathname === '/api/assets/import') {
     if (request.method !== 'POST' || !editable) {
       sendError(response, 405, request.method === 'HEAD');
@@ -1228,8 +1249,166 @@ async function routeRequest({
   }
   const editMutation = request.method === 'POST'
     && (pathname === '/api/validate' || pathname === '/api/save');
-  if (editMutation && editable && runtime.importController.busy) {
+  if (editMutation && editable && (runtime.importController.busy || runtime.discovery?.busy)) {
     rejectRequest(409, 'MEDIA_IMPORT_BUSY');
+  }
+  if (
+    [
+      '/api/broll/preview',
+      '/api/broll/preview-job',
+      '/api/broll/approve',
+    ].includes(pathname)
+  ) {
+    if (!editable) {
+      sendError(response, 405);
+      return;
+    }
+    if (request.headers.origin && request.headers.origin !== origin) {
+      sendError(response, 403);
+      return;
+    }
+    try {
+      if (pathname === '/api/broll/preview-job') {
+        if (request.method !== 'GET') {
+          sendError(response, 405);
+          return;
+        }
+        const job = runtime.previewJobs.get(url.searchParams.get('id'));
+        const state = refreshRuntimeState({
+          root,
+          projectDir,
+          editable,
+          runtime,
+          sourceFile,
+          waveformFile,
+        });
+        sendJson(response, 200, { ...job, state });
+        return;
+      }
+      if (request.method !== 'POST') {
+        sendError(response, 405);
+        return;
+      }
+      if (runtime.importController.busy || runtime.discovery.busy) {
+        rejectRequest(409, 'MEDIA_IMPORT_BUSY');
+      }
+      if (
+        !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(
+          request.headers['content-type'] || '',
+        )
+      ) {
+        sendError(response, 400);
+        return;
+      }
+      const bytes = await consumeLimitedBody(request, response);
+      if (bytes === null) return;
+      let body;
+      try {
+        body = JSON.parse(
+          new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+        );
+      } catch (_) {
+        rejectRequest(400, 'PREVIEW_INVALID_REQUEST');
+      }
+      const allowed =
+        pathname === '/api/broll/preview'
+          ? ['baseRevision', 'baseHash', 'manifestHash', 'kind', 'sceneIndex']
+          : [
+              'baseRevision',
+              'baseHash',
+              'manifestHash',
+              'confirmPreviewViewed',
+            ];
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body) ||
+        Object.keys(body).some((key) => !allowed.includes(key))
+      )
+        rejectRequest(400, 'PREVIEW_INVALID_REQUEST');
+      if (runtime.previewJobs.busy) rejectRequest(409, 'PREVIEW_BUSY');
+      const current = runtime.previewJobs.check(body);
+      assertCurrentSourceIdentity({ projectDir, current, sourceFile });
+      if (pathname === '/api/broll/preview') {
+        sendJson(response, 202, runtime.previewJobs.start(body));
+        return;
+      }
+      if (body.confirmPreviewViewed !== true)
+        rejectRequest(400, 'PREVIEW_CONFIRMATION_REQUIRED');
+      approveBrief(current.workspace, current.briefFilePath, {
+        root,
+        fileSystem,
+        confirmPreviewViewed: true,
+        expectedPreviewSha256:
+          current.workspace.manifest.currentPreview?.sha256,
+      });
+      const state = refreshRuntimeState({
+        root,
+        projectDir,
+        editable,
+        runtime,
+        sourceFile,
+        waveformFile,
+      });
+      sendJson(response, 201, { ok: true, state });
+    } catch (error) {
+      const code = [
+        'STALE_REVIEW_BASE',
+        'PREVIEW_BUSY',
+        'PREVIEW_NOT_FOUND',
+        'PREVIEW_INVALID_REQUEST',
+        'PREVIEW_DRAFT_REQUIRED',
+        'PREVIEW_CONFIRMATION_REQUIRED',
+        'MEDIA_IMPORT_BUSY',
+      ].includes(error?.code)
+        ? error.code
+        : 'PREVIEW_APPROVAL_FAILED';
+      const status =
+        code === 'PREVIEW_NOT_FOUND'
+          ? 404
+          : ['STALE_REVIEW_BASE', 'PREVIEW_BUSY', 'MEDIA_IMPORT_BUSY'].includes(
+                code,
+              )
+            ? 409
+            : code === 'PREVIEW_APPROVAL_FAILED'
+              ? 422
+              : 400;
+      sendJson(response, status, { error: code });
+    }
+    return;
+  }
+  const discoveryRoute = pathname.startsWith('/api/broll/') || pathname.startsWith('/media/broll-candidate/');
+  if (discoveryRoute) {
+    if (!editable) { sendError(response, 405); return; }
+    const proxy = /^\/media\/broll-candidate\/([A-Za-z0-9_-]{16,128})\/(thumbnail|preview)$/.exec(pathname);
+    if ((!proxy && request.method !== 'POST') || (proxy && !safeMethod)) {sendError(response,405);return;}
+    if (request.headers.origin && request.headers.origin !== origin) {sendError(response,403);return;}
+    const abort = new AbortController();
+    const cancel = () => { if (!response.writableEnded) abort.abort(); };
+    response.once('close', cancel);
+    try {
+      if (proxy) {
+        const media = await runtime.discovery.proxy(proxy[1], proxy[2], abort.signal);
+        const range = parseRange(request.headers.range, media.bytes.length);
+        if (range === false) {sendError(response,416);return;}
+        send(response,range?206:200,range?media.bytes.subarray(range.start,range.end+1):media.bytes,{
+          'Content-Type':media.contentType, 'Accept-Ranges':'bytes',
+          ...(range?{'Content-Range':`bytes ${range.start}-${range.end}/${media.bytes.length}`}:{})
+        },request.method==='HEAD');
+      } else {
+        if (!['/api/broll/search','/api/broll/reject','/api/broll/select'].includes(pathname)) {sendError(response,404);return;}
+        if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(request.headers['content-type']||'')) {sendError(response,400);return;}
+        const bytes = await consumeLimitedBody(request,response);if(bytes===null)return;
+        let body;try {body=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch {rejectRequest(400,'BROLL_REQUEST_INVALID');}
+        const method=pathname.split('/').at(-1);
+        const result=await runtime.discovery[method](body,abort.signal);
+        sendJson(response,method==='select'?201:200,result);
+      }
+    } catch(error) {
+      const code = /^(?:BROLL_|STALE_REVIEW_BASE|MEDIA_IMPORT_)[A-Z0-9_]*$/.test(error?.code||'') ? error.code : 'BROLL_PROVIDER_FAILED';
+      if(!response.destroyed&&!response.writableEnded)sendJson(response,[400,404,409,413,415,422,507].includes(error.status)?error.status:502,{error:code});
+    } finally {response.off('close',cancel);}
+    return;
   }
   const bodyBytes = await consumeLimitedBody(request, response);
   if (bodyBytes === null) return;
@@ -1455,6 +1634,10 @@ async function startReviewServer({
   statfsImpl = fs.statfsSync,
   probeReviewMediaImpl = probeReviewMedia,
   importController = createImportController(),
+  brollProvider,
+  brollDownload,
+  brollStore,
+  previewSpawnImpl,
 } = {}) {
   const resolvedRoot = path.resolve(root);
   const resolvedProjectDir = path.resolve(projectDir || '');
@@ -1499,6 +1682,23 @@ async function startReviewServer({
     activeImportAbortControllers: new Set(),
     activeImportFinalizers: new Set(),
   };
+  runtime.previewJobs = createPreviewJobs({root:resolvedRoot,projectDir:resolvedProjectDir,getBase:()=>loadReviewBase({projectDir:resolvedProjectDir}),...(previewSpawnImpl ? { spawnImpl: previewSpawnImpl } : {})});
+  runtime.discovery = createBrollDiscovery({
+    provider: brollProvider || {search(input) {const config=loadBrollConfig({root:resolvedRoot});return createPexelsProvider(config).search(input);}},
+    ...(brollDownload?{download:brollDownload}:{}), ...(brollStore?{store:brollStore}:{}),
+    getSnapshot() {
+      const current=loadReviewBase({projectDir:resolvedProjectDir});
+      assertCurrentSourceIdentity({projectDir:resolvedProjectDir,current,sourceFile});
+      return {baseRevision:current.entry.revision,baseHash:current.baseHash,manifestHash:current.manifestHash,scenes:current.brief.scenes};
+    },
+    importMedia:importMediaImpl,
+    importContext:{projectDir:resolvedProjectDir,outputFps:runtime.state.output.fps,controller:runtime.importController,fileSystem,runMediaProcessImpl,statfsImpl},
+    registerAsset(imported) {
+      const refreshed=refreshAssetFiles({root:resolvedRoot,projectDir:resolvedProjectDir,runtime});
+      runtime.assetFiles=refreshed.assetFiles;runtime.state={...runtime.state,assets:refreshed.descriptors};
+      return {assetId:descriptorForPublished(imported,runtime.assetFiles).id,state:runtime.state};
+    },
+  });
   const token = randomBytes(32).toString('base64url');
   let origin = 'http://127.0.0.1';
   const server = http.createServer((request, response) => {
@@ -1569,6 +1769,8 @@ async function startReviewServer({
     await closeReviewServer(server);
     throw error;
   }
+  const originalClose = server.close.bind(server);
+  server.close = (...args) => { runtime.previewJobs.close(); runtime.discovery.close(); return originalClose(...args); };
   if (handoff) server.once('close', handoff.cleanup);
   return {
     server,
@@ -1577,9 +1779,13 @@ async function startReviewServer({
     origin,
     handoffPath: handoff ? handoff.path : null,
     abortActiveImports() {
+      runtime.previewJobs.close();
+      runtime.discovery.close();
       for (const controller of runtime.activeImportAbortControllers) controller.abort();
     },
     async waitForActiveImports() {
+      await runtime.discovery.waitIdle();
+      await runtime.previewJobs.waitIdle();
       while (runtime.activeImportFinalizers.size > 0) {
         await Promise.allSettled([...runtime.activeImportFinalizers]);
       }

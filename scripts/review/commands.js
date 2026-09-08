@@ -118,9 +118,38 @@ function applyReplaceBroll(candidate, command, assets) {
   const scene = eligibleBrollScene(candidate, sceneIndex);
   const asset = selectableAsset(assets, assetId);
   delete scene.brollSrc;
+  delete scene.brollReview;
+  if (asset.provenance) candidate.brollReviewPolicy = 'preview-required';
   scene.brollMedia = asset.mediaKind === 'video'
     ? { kind: 'video', assetId, trimStartSec: 0, fit: 'contain', audioMode: 'mute' }
     : { kind: 'image', assetId, fit: 'cover' };
+}
+
+function applyAllowBrollText(candidate, command, assets) {
+  if (!exactCommandShape(command, ['type', 'sceneIndex', 'allowEmbeddedText'])
+    || typeof command.allowEmbeddedText !== 'boolean') commandError('shape is not supported');
+  const scene = eligibleBrollScene(candidate, command.sceneIndex);
+  const asset = selectedAsset(scene, assets);
+  if (!asset?.provenance || !asset.textScan || !asset.scanSha256) commandError('discovery media is not selected');
+  if (command.allowEmbeddedText) scene.brollReview = true;
+  else delete scene.brollReview;
+}
+
+function validQuery(value) {
+  return typeof value === 'string' && value.trim().length >= 1 && value.length <= 200
+    && !/[\u0000-\u001F\u007F]/u.test(value);
+}
+
+function applySetBrollQuery(candidate, command) {
+  if (!exactCommandShape(command, ['type', 'sceneIndex', 'queryOriginal', 'queryEnglish'])
+    || command.type !== 'set-broll-query'
+    || !validQuery(command.queryOriginal) || !validQuery(command.queryEnglish)) {
+    commandError('broll query shape is not supported');
+  }
+  const scene = eligibleBrollScene(candidate, command.sceneIndex);
+  if (!scene.brollIntent) commandError('broll intent is not available');
+  scene.brollIntent.queryOriginal = command.queryOriginal;
+  scene.brollIntent.queryEnglish = command.queryEnglish;
 }
 
 function selectedAsset(scene, assets) {
@@ -180,6 +209,7 @@ function validateReviewCandidate({ candidate, base, assets, fps } = {}) {
     commandError('review context is invalid');
   }
   candidate.status = 'draft';
+  delete candidate.brollApproval;
   if (!Array.isArray(candidate.scenes)
     || candidate.scenes.some((scene) => scene && scene.brollMediaBlocked === true)) {
     commandError('contains unresolved broll media');
@@ -189,6 +219,13 @@ function validateReviewCandidate({ candidate, base, assets, fps } = {}) {
     const original = candidate.scenes[index];
     if (!original || original.scene !== 'broll' || !original.brollMedia) continue;
     canonicalCandidate.scenes[index].brollMedia = validateMediaSelection(original, assets, fps);
+    if (Object.hasOwn(original, 'brollReview')) {
+      const asset = selectedAsset(original, assets);
+      if (original.brollReview !== true || !asset?.provenance || !asset.scanSha256) commandError('acknowledgement is invalid');
+      canonicalCandidate.scenes[index].brollReview = {
+        assetSha256: asset.canonicalSha256, scanSha256: asset.scanSha256, allowEmbeddedText: true,
+      };
+    }
   }
   const validation = validateLessonBrief(canonicalCandidate);
   if (!validation.ok) commandError('produced an invalid lesson brief');
@@ -242,6 +279,10 @@ function applyReviewCommand({ brief, command, assets, fps } = {}) {
     applyMoveBoundary(candidate, command);
   } else if (type.value === 'replace-broll') {
     applyReplaceBroll(candidate, command, assets);
+  } else if (type.value === 'allow-broll-text') {
+    applyAllowBrollText(candidate, command, assets);
+  } else if (type.value === 'set-broll-query') {
+    applySetBrollQuery(candidate, command);
   } else if (type.value === 'set-broll-fit') {
     applySetBrollFit(candidate, command);
   } else if (type.value === 'set-broll-video-start') {

@@ -4,6 +4,10 @@
 
 Не нужно уметь монтировать и не нужен терминал, всё делает агент по твоему запросу.
 
+Первый запуск: открой простую инструкцию
+[«Монтаж от видео до готового MP4»](docs/MONTAGE-GUIDE.md). В ней показано, что попросить у
+агента, где выбрать B-roll, почему Save не создаёт видео и как перейти от preview к final.
+
 📐 <b>Шаблоны и стили</b>: каталог со скринами в [docs/TEMPLATES.md](docs/TEMPLATES.md).
 Флагман: <b>lesson-presentation</b> (урок/эфир, 9:16 или 16:9). Свой фирменный стиль подключается
 внешней темой (`THEMES_EXT`) и в открытый репозиторий не попадает.
@@ -52,7 +56,7 @@ automontage doctor      # или: node scripts/doctor.js
 Движок кросс-платформенный. После установки появляется команда `automontage`, доступная **из любой папки**.
 
 ```bash
-git clone https://github.com/Ntmib/AutoMontage-Agent.git
+git clone https://github.com/mcdenil-skills/AutoMontage-Agent.git
 cd AutoMontage-Agent
 npm ci                 # точные Node-зависимости из package-lock.json
 pip install -r requirements.txt   # Python: faster-whisper, opencv, numpy
@@ -64,7 +68,7 @@ npm install -g .       # ставит глобальную команду automo
 Этот короткий маршрут не требует API-ключей или Whisper-модели:
 
 ```bash
-git clone https://github.com/Ntmib/AutoMontage-Agent.git
+git clone https://github.com/mcdenil-skills/AutoMontage-Agent.git
 cd AutoMontage-Agent
 npm ci
 npm run doctor
@@ -106,6 +110,20 @@ lesson-ТЗ. Он не должен просить, проверять или р
 API-ключ не нужен вообще. Сохранённый provider-режим `scripts/gen-brief.js` является явным
 legacy/developer opt-in и не входит в стандартный путь навыка `reel-turnkey`.
 
+### Внешние сервисы и локальные инструменты
+
+| Компонент | Когда используется | Нужен ключ |
+|---|---|---|
+| Claude Code или Codex | агент читает транскрипт и готовит монтажный лист | нет, используется текущая подписка |
+| faster-whisper | локальная расшифровка; модель может скачаться из Hugging Face при первом запуске | нет |
+| Pexels API | необязательный поиск готовых фото и видео в Review | `PEXELS_API_KEY` |
+| FFmpeg, Remotion, Tesseract | локальный монтаж, preview, render, нормализация и OCR | нет |
+| Anthropic/OpenAI API | только отдельные legacy/developer-скрипты или явно подтверждённая генерация | опционально, возможна оплата |
+| Pixabay/Openverse | зарезервированы для будущих провайдеров, в v1.6.0 не подключены | оставить пустыми |
+
+Все доступные переменные и пояснения находятся в [`.env.example`](.env.example). Настоящий
+`.env` остаётся только на компьютере пользователя и исключён из Git и npm-пакета.
+
 ---
 
 ## Формат ролика = формат исходника
@@ -119,7 +137,14 @@ FPS также наследуется без округления: наприм�
 
 Перекадрирование (например, из горизонта в вертикаль со слежением за лицом) делается **только по твоему запросу**. В конце агент может спросить, нужна ли версия в другом формате.
 
-## Один ролик = одна папка проекта
+## Один ролик или пакет
+
+Один ролик проходит полный lesson-маршрут ниже. Для нескольких Reels и вариантов одного хука
+используй [пакетный workflow](docs/BATCH-REELS-WORKFLOW.md): подготовка и анализ могут идти
+параллельно, но каждый результат получает отдельную игнорируемую project-папку, собственное
+утверждение и QA. Полные Remotion-рендеры в одном checkout выполняются последовательно.
+
+### Один ролик = одна папка проекта
 
 Для работы под ключ используй project-режим. Движок создаст локальную папку
 `projects/YYYY.MM.DD_latin-slug/` и сложит туда копию исходника, транскрипт, все версии ТЗ,
@@ -315,12 +340,13 @@ automontage review --project-dir projects/2026.08.20_demo --edit
    кадрирование и звук. Для видео без аудиодорожки доступны только «Без звука».
 6. Нажми **«Сохранить»** один раз. Контрольная точка: в project-папке появилась новая пара
    `brief/vNN-draft.lesson.md` + `.json`; старые draft, approved и renders не изменились.
-7. Закрой Review, проверь новую ревизию, явно утверди именно её и только затем рендери:
+7. Собери и посмотри полный preview новой ревизии, явно утверди именно её и только затем рендери.
+   Для discovery-процесса проверка полного preview обязательна. Через терминал:
 
 ```bash
 node scripts/project/approve-brief.js \
   projects/2026.08.20_demo \
-  brief/vNN-draft.lesson.json
+  brief/vNN-draft.lesson.json --confirm-preview-viewed
 
 node scripts/build.js \
   projects/2026.08.20_demo/input/source.mp4 \
@@ -395,9 +421,10 @@ SIGKILL, а CLI ждёт полного import-finalizer: controller, quarantine
 
 Draft никогда не передаётся в **финальный** render. Отдельная команда `automontage preview`
 имеет собственную draft-only границу и не может писать `renders/`, `final/` или `latestRender`.
-В Review нет кнопок approval и финального render: новую ревизию нужно
-отдельно утвердить через `scripts/project/approve-brief.js`, затем собрать существующей командой
-с `--brief`, как показано выше.
+В edit Review preview и approval запускаются отдельными явными действиями после Save.
+Discovery approval требует текущего полного preview и подтверждения его просмотра. Можно
+также использовать `scripts/project/approve-brief.js --confirm-preview-viewed`. Финальный render
+запускается отдельной существующей командой с `--brief`, как показано выше.
 
 Сервер слушает только `127.0.0.1` и создаёт случайный session token. Все `/api/*` и `/media/*`
 запросы требуют token; POST дополнительно принимает только Origin текущей loopback-сессии.
@@ -462,7 +489,51 @@ Review намеренно не поддерживает свободное ре�
 | `large-v3-turbo` | ~1.6 ГБ | почти макс | **по умолчанию** (баланс) |
 | `large-v3` | ~3 ГБ | максимум | мощный сервер, чистовик |
 
-По умолчанию – `large-v3-turbo`. Скажи агенту «используй small» или «поставь large-v3» – он переключит. Есть и облачный вариант (без скачивания, но платно и нужен интернет): OpenAI Whisper API / Yandex SpeechKit.
+По умолчанию – `large-v3-turbo`. Скажи агенту «используй small» или «поставь large-v3» – он
+переключит локальную модель. Транскрибация в основном процессе AutoMontage выполняется локально
+и не требует API-ключа.
+
+## Поиск B-roll: фото и видео Pexels
+
+Основной монтаж, локальный Whisper, lesson draft, Review, preview и render работают без API.
+`PEXELS_API_KEY` нужен только для интернет-поиска фото и видео. Получи бесплатный ключ на
+[странице Pexels API](https://www.pexels.com/api/), скопируй `.env.example` в локальный `.env`
+в корне установки движка и заполни строки ниже. Настоящий `.env` не коммить и ключ не присылай
+в чат. Сервер читает ключ локально; браузер его не получает.
+
+```dotenv
+BROLL_SEARCH_PROVIDER=pexels
+PEXELS_API_KEY=your-local-key
+```
+
+Попроси агента подготовить lesson draft с целью кадра и поисковым намерением `brollIntent`.
+Открой Review с `--edit`, нажми **«Подобрать B-roll»**, выбери вкладку **«Видео»** или **«Фото»**,
+уточни запрос и фильтры. Посмотри кандидатов, автора, лицензию и исходную страницу. **«Выбрать»**
+скачивает и проверяет только выбранный полный файл, затем назначает его сцене в черновике.
+Существующая кнопка **«Добавить медиа»** продолжает принимать локальные файлы без Pexels.
+
+После выбора настрой `cover`/`contain`, старт и используемый интервал видео; звук по умолчанию
+выключен (`mute`). Проверь распознанный встроенный текст. Если текст нужен намеренно, включи
+**«Разрешить встроенный текст»**; при ошибке или отсутствии локального OCR требуется ручной
+просмотр. OCR не гарантирует обнаружение графических логотипов. Текст самого ролика остаётся
+нативной Remotion-графикой из утверждённой речи.
+
+Сохрани новую draft-ревизию. Сначала можно собрать короткий preview выбранной сцены, затем
+обязательно полный настоящий Remotion-preview. После просмотра подтверди его и явно утверди
+brief. Поиск, выбор, импорт и Save сами не запускают approval или final render. Подробные шаги
+и команды: [Review Workbench](docs/REVIEW-WORKBENCH.md).
+
+Если ключ не настроен, поиск покажет инструкцию, а остальные возможности останутся доступны.
+Проверка реального провайдера: `node scripts/broll/live-acceptance.js`; без ключа она честно
+сообщает `SKIPPED: PEXELS_API_KEY is not configured`. Обычные тесты используют локальный mock
+HTTP server и не расходуют квоту Pexels.
+
+Pexels по умолчанию предоставляет 200 запросов в час и 20 000 в месяц; актуальные ограничения
+и условия: [API documentation](https://www.pexels.com/api/documentation/). В Review сохраняются
+ссылки на Pexels и автора согласно [API credit guidance](https://help.pexels.com/hc/en-us/articles/900005851903-How-should-I-give-credit-Can-I-use-your-logo),
+а происхождение и [лицензия Pexels](https://www.pexels.com/license/) записываются с локальным
+asset. Лицензия медиа и требования отображения API различаются; это не разрешение продавать
+неизменённые stock-файлы или создавать конкурирующий каталог.
 
 ## Под капотом (для любопытных)
 
@@ -476,7 +547,10 @@ Remotion (анимация плашек кодом), faster-whisper (распо�
 ### Документация
 
 - [docs/TEMPLATES.md](docs/TEMPLATES.md) – команды, форматы и канонический lesson-процесс.
+- [docs/BATCH-REELS-WORKFLOW.md](docs/BATCH-REELS-WORKFLOW.md) – несколько Reels, варианты
+  хуков, векторные объяснения, обложки и пакетный QA.
 - [docs/REVIEW-WORKBENCH.md](docs/REVIEW-WORKBENCH.md) – полная работа с монтажом в браузере.
+- [docs/MONTAGE-GUIDE.md](docs/MONTAGE-GUIDE.md) – простая инструкция от исходника до final MP4.
 - [docs/SCENE-CATALOG.md](docs/SCENE-CATALOG.md) – семь официальных сцен и их возможности.
 - [ARCHITECTURE.md](ARCHITECTURE.md) – модули, потоки данных и границы системы.
 - [TESTING.md](TESTING.md) – от быстрых тестов до проверки готового MP4.
@@ -487,8 +561,8 @@ Remotion (анимация плашек кодом), faster-whisper (распо�
 
 ### Версии и история изменений
 
-Текущая версия: **v1.4.0**
-([GitHub Release](https://github.com/Ntmib/AutoMontage-Agent/releases/tag/v1.4.0)). Источник номера
+Текущая версия исходников: **v1.6.0**. Опубликованные сборки находятся на странице
+[GitHub Releases](https://github.com/mcdenil-skills/AutoMontage-Agent/releases). Источник номера
 в репозитории – `version` в `package.json` и корневая запись в `package-lock.json`; состав
 релиза описан в [CHANGELOG.md](CHANGELOG.md).
 
@@ -508,11 +582,11 @@ Remotion (анимация плашек кодом), faster-whisper (распо�
 git config core.hooksPath .githooks
 ```
 
-Перед каждым коммитом hook запускает `gitleaks` по staged-файлам и блокирует коммит при
-подозрении на API-ключ, токен или пароль. В GitHub тот же контроль повторяется на каждый
-push и pull request с полной историей репозитория. В настройках репозитория дополнительно
-включены GitHub Secret Scanning и Push Protection. Не обходи локальную проверку через
-`--no-verify`.
+Перед каждым коммитом hook сначала проверяет точные staged blobs командой
+`node scripts/check-public-privacy.js --staged`: клиентские папки, личные абсолютные пути,
+приватные `.env` и неучтённые бинарные медиа блокируются до коммита. Затем Gitleaks ищет
+API-ключи, токены и пароли. В GitHub обе независимые проверки повторяются на каждый push и pull
+request, а Gitleaks сканирует полную историю. Не обходи локальный hook через `--no-verify`.
 
 `npm audit --audit-level=high` блокирует high/critical advisories. Пять текущих moderate
 записей сводятся к одному transitive `file-type` advisory внутри optional `--autotheme`;

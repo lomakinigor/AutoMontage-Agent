@@ -77,6 +77,7 @@ function browserScene(scene) {
   const result = { ...scene };
   delete result.faceSrc;
   delete result.brollSrc;
+  if (result.brollReview !== true) delete result.brollReview;
   if (result.brollMediaBlocked === true) {
     delete result.brollMediaBlocked;
     delete result.brollMedia;
@@ -95,7 +96,7 @@ function buildReviewCandidateBase({ canonicalBrief, assetFiles } = {}) {
   }
   if (!Array.isArray(candidate?.scenes)) throw new Error('review brief is invalid');
   for (const scene of candidate.scenes) {
-    if (scene?.scene !== 'broll' || !scene.brollMedia) continue;
+    if (scene?.scene !== 'broll' || !scene.brollMedia) { delete scene.brollReview; continue; }
     const persisted = scene.brollMedia;
     let resolved = null;
     for (const [assetId, asset] of assetFiles) {
@@ -112,9 +113,15 @@ function buildReviewCandidateBase({ canonicalBrief, assetFiles } = {}) {
     delete scene.brollSrc;
     if (!resolved) {
       delete scene.brollMedia;
+      delete scene.brollReview;
       scene.brollMediaBlocked = true;
       continue;
     }
+    const acknowledgement = scene.brollReview;
+    delete scene.brollReview;
+    if (acknowledgement?.allowEmbeddedText === true
+      && acknowledgement.assetSha256 === resolved.asset.canonicalSha256
+      && acknowledgement.scanSha256 === resolved.asset.scanSha256) scene.brollReview = true;
     scene.brollMedia = persisted.kind === 'video'
       ? {
         kind: 'video',
@@ -139,6 +146,7 @@ function buildReviewStateFromEdit({ state, brief, timing } = {}) {
     },
     brief: {
       status: brief.status,
+      ...(brief.brollReviewPolicy ? { brollReviewPolicy: brief.brollReviewPolicy } : {}),
       title: brief.title,
       scenes: brief.scenes.map(browserScene),
     },
@@ -226,6 +234,8 @@ function buildReviewState({
     source: { url: '/media/source' },
     currentPreview: preview ? {
       url: '/media/current-preview',
+      stale: !(brief.status === 'approved' && brief.brollApproval?.draftSha256 === preview.briefSha256 && brief.brollApproval?.previewSha256 === preview.sha256)
+        && (preview.briefPath !== manifest.currentBrief || (preview.briefSha256 ? preview.briefSha256 !== crypto.createHash('sha256').update(fs.readFileSync(base.briefFilePath)).digest('hex') : brief.brollReviewPolicy === 'preview-required')),
       kind: preview.kind,
       fromSec: preview.fromSec,
       toSec: preview.toSec,
@@ -236,6 +246,7 @@ function buildReviewState({
     } : null,
     brief: {
       status: reviewBrief.status,
+      ...(reviewBrief.brollReviewPolicy ? { brollReviewPolicy: reviewBrief.brollReviewPolicy } : {}),
       title: reviewBrief.title,
       scenes: reviewBrief.scenes.map(browserScene),
     },

@@ -760,7 +760,7 @@ test('save confirms server diff, creates a new draft and leaves approved bytes u
     await expect(page.getByRole('button', { name: /^отменить$/i })).toBeDisabled();
     await expect(page.getByRole('button', { name: /^повторить$/i })).toBeDisabled();
     await expect(page.getByRole('button', { name: /^сохранить$/i })).toBeDisabled();
-    await expect(page.getByRole('button', { name: /утвердить/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /утвердить/i })).toBeDisabled();
 
     expect(requestBodies.save).toHaveLength(1);
     expect(requestBodies.save[0]).toEqual(requestBodies.validate.at(-1));

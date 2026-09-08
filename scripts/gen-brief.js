@@ -52,6 +52,27 @@ function cleanArray(value, limit) {
     .slice(0, limit);
 }
 
+function normalizeBrollIntent(value, scene) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const queryOriginal = cleanString(value.queryOriginal);
+  const queryEnglish = cleanString(value.queryEnglish);
+  if (!queryOriginal || !queryEnglish) return null;
+  const heading = cleanString([scene.headCream, scene.headOrange]
+    .map((part) => cleanString(part)).filter(Boolean).join(' '));
+  const spokenText = cleanString(
+    scene.sub || scene.caption || scene.quoteCream || scene.big || scene.statCream || heading,
+  );
+  const result = {
+    goal: cleanString(value.goal) || heading || spokenText,
+    sourceText: cleanString(value.sourceText) || spokenText,
+    queryOriginal,
+    queryEnglish,
+  };
+  if (!Object.values(result).every(Boolean)) return null;
+  if (value.semanticDescription) result.semanticDescription = cleanString(value.semanticDescription);
+  return result;
+}
+
 function baseScene(scene) {
   const start = Math.max(0, Number(scene.start) || 0);
   const rawEnd = Number(scene.end);
@@ -167,14 +188,18 @@ function normalizeScene(scene, availableBroll) {
     ? structuredClone(scene.brollMedia)
     : null;
   const brollSrc = requestedMedia ? cleanString(requestedMedia.src) : cleanString(scene.brollSrc);
-  if (!brollSrc || !availableBroll.includes(brollSrc)) return fallbackSplit(scene);
+  const brollIntent = normalizeBrollIntent(scene.brollIntent, scene);
+  if ((!brollSrc || !availableBroll.includes(brollSrc)) && !brollIntent) return fallbackSplit(scene);
   const result = {
     ...base,
     headCream: cleanString(scene.headCream, 'ЖИВОЙ'),
     headOrange: cleanString(scene.headOrange, 'ПРИМЕР'),
   };
-  if (requestedMedia) result.brollMedia = requestedMedia;
-  else result.brollSrc = brollSrc;
+  if (brollSrc && availableBroll.includes(brollSrc)) {
+    if (requestedMedia) result.brollMedia = requestedMedia;
+    else result.brollSrc = brollSrc;
+  }
+  if (brollIntent) result.brollIntent = brollIntent;
   if (scene.showSpeakerPip === false) result.showSpeakerPip = false;
   if (scene.sub) result.sub = cleanString(scene.sub);
   return result;
@@ -234,6 +259,7 @@ function normalizeGeneratedBrief(generated, context) {
     corrections,
     scenes,
   };
+  if (scenes.some((scene) => scene.brollIntent)) brief.brollReviewPolicy = 'preview-required';
   if (context.facePos) brief.facePos = context.facePos;
   if (context.faceZoom) brief.faceZoom = context.faceZoom;
 
@@ -244,8 +270,8 @@ function normalizeGeneratedBrief(generated, context) {
 
 function buildSystemPrompt({ maxScenes, availableBroll }) {
   const brollRule = availableBroll.length
-    ? `broll разрешён только с одним из brollSrc: ${availableBroll.join(', ')}`
-    : 'broll не используй: доступных файлов нет.';
+    ? `для готового файла broll разрешён только с одним из brollSrc: ${availableBroll.join(', ')}; без файла используй brollIntent`
+    : 'brollSrc и brollMedia не используй: доступных файлов нет; broll с явным brollIntent разрешён.';
   return `Ты режиссёр обучающего видео. Ты НЕ создаёшь дизайн и НЕ придумываешь новые сцены.
 Выбирай не более ${maxScenes} сцен только из фиксированной библиотеки:
 - fullscreen: короткий заход или связка, поля caption; для текста в свободной части горизонтального кадра variant side-overlay, steps, stepStartsSec;
@@ -254,7 +280,7 @@ function buildSystemPrompt({ maxScenes, availableBroll }) {
 - blur-overlay: сильный акцент, поля label, big, headCream, headOrange, sub;
 - text-only: дословная цитата, поля label, quoteCream, quoteOrange, author;
 - stat: реально произнесённая метрика, поля label, statCream, statOrange, headCream, headOrange, sub;
-- broll: реальный визуальный пример, поля brollSrc или brollMedia, headCream, headOrange, sub, showSpeakerPip.
+- broll: реальный визуальный пример, поля brollSrc/brollMedia или brollIntent, headCream, headOrange, sub, showSpeakerPip. Для поиска заполни brollIntent: goal и sourceText дословно по речи, queryOriginal на языке речи, короткий queryEnglish на английском для stock-поиска; не выдумывай удалённый контент.
 
 Правила:
 - chart запрещён;

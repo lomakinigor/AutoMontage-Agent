@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const { remotionRenderCommand } = require('./build-commands');
@@ -137,12 +137,18 @@ function runPreview(options, dependencies = {}) {
 
   const projectDir = path.resolve(options.projectDir);
   const manifest = readProjectManifestImpl(projectDir);
+  const manifestHash = createHash('sha256').update(JSON.stringify(manifest)).digest('hex');
+  if (process.env.AUTOMONTAGE_PREVIEW_MANIFEST_HASH && process.env.AUTOMONTAGE_PREVIEW_MANIFEST_HASH !== manifestHash) throw new Error('preview base changed');
   const workspace = { dir: projectDir, manifest };
   const briefPath = resolveBriefPath(workspace, options.briefPath);
-  const brief = JSON.parse(fileSystem.readFileSync(briefPath, 'utf8'));
+  const briefBytes = fileSystem.readFileSync(briefPath);
+  const brief = JSON.parse(briefBytes.toString('utf8'));
+  const briefSha256 = createHash('sha256').update(briefBytes).digest('hex');
   const sourceVideo = resolveProjectPath(projectDir, manifest.source.localPath, {
     label: 'manifest.source.localPath', fileSystem, mustExist: true, type: 'file',
   });
+  if (process.env.AUTOMONTAGE_PREVIEW_BRIEF_HASH && process.env.AUTOMONTAGE_PREVIEW_BRIEF_HASH !== createHash('sha256').update(JSON.stringify(brief)).digest('hex')) throw new Error('preview base changed');
+  const sourceSha256 = require('./project/preview-workspace').hashFile(fileSystem, sourceVideo);
   const externalTheme = loadExtTheme(brief.theme);
   const prepareOptions = { brief, theme: externalTheme || brief.theme, sourceVideo };
   if (options.fromSec !== undefined || options.toSec !== undefined) {
@@ -152,6 +158,9 @@ function runPreview(options, dependencies = {}) {
   const prepared = prepareLessonPreviewImpl(prepareOptions);
   const planned = planPreview(workspace, {
     briefPath,
+    briefSha256,
+    sourceSha256,
+    manifestHash,
     range: prepared.range,
     temporaryId,
     fileSystem,

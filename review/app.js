@@ -1,5 +1,6 @@
 import { formatTime, renderTimeline } from './timeline.js';
 import { createMediaImporter } from './media-import.js';
+import { createBrollDiscoveryUI } from './broll-discovery.js';
 
 function takeSessionToken() {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -131,12 +132,12 @@ function renderMetadata(state, token) {
       previewVideo.setAttribute('aria-label', 'Смонтированный предпросмотр');
       previewFrame.replaceChildren(previewVideo);
     }
-    const previewUrl = authenticatedMediaUrl(state.currentPreview.url, token);
+    const previewUrl = authenticatedMediaUrl(`${state.currentPreview.url}?v=${encodeURIComponent(state.currentPreview.generatedAt)}`, token);
     if (previewVideo.getAttribute('src') !== previewUrl) previewVideo.src = previewUrl;
     previewFrame.hidden = false;
     previewEmpty.hidden = true;
     previewKind.hidden = false;
-    previewKind.textContent = state.currentPreview.kind === 'full'
+    previewKind.textContent = state.currentPreview.stale ? 'УСТАРЕЛ - сохраните и создайте новый preview' : state.currentPreview.kind === 'full'
       ? 'ПОЛНЫЙ РОЛИК'
       : `ФРАГМЕНТ ${formatPreviewTime(state.currentPreview.fromSec)}–${formatPreviewTime(state.currentPreview.toSec)}`;
   } else {
@@ -361,6 +362,9 @@ function createEditor(initialState, token) {
   let pending = false;
   let saving = false;
   let importing = false;
+  let discovering = false;
+  let previewBusy = false;
+  let viewedPreviewKey = null;
   let invalid = false;
   let conflict = false;
   let conflictFreshStateReady = false;
@@ -381,9 +385,179 @@ function createEditor(initialState, token) {
   const previewPositions = new Map();
   const controls = createEditControls();
   document.querySelector('.mode-badge').textContent = 'Редактирование';
+  const previewControls = element('section', 'preview-actions');
+  previewControls.setAttribute('aria-label', 'Предпросмотр и утверждение');
+  const previewHeading = element('h3', '', 'Предпросмотр и утверждение');
+  const excerptGroup = element('div', 'preview-actions-row');
+  const fullGroup = element('div', 'preview-actions-row');
+  const sceneLabel = element('label', 'broll-setting', 'Сцена для фрагмента');
+  const excerptScene = element('select');
+  excerptScene.setAttribute('aria-label', 'Сцена для фрагмента');
+  sceneLabel.append(excerptScene);
+  state.brief.scenes.forEach((scene, index) => {
+    const option = element('option', '', `Сцена ${index + 1}`);
+    option.value = String(index);
+    excerptScene.append(option);
+  });
+  const excerptButton = element('button', 'edit-button', 'Preview фрагмента');
+  const fullButton = element('button', 'edit-button', 'Полный preview');
+  const viewed = element('input');
+  viewed.type = 'checkbox';
+  const viewedLabel = element(
+    'label',
+    'preview-viewed',
+    'Я посмотрел полный preview',
+  );
+  viewedLabel.prepend(viewed);
+  const approveButton = element('button', 'edit-button', 'Утвердить');
+  const previewStatus = element('p', 'edit-status');
+  previewStatus.setAttribute('role', 'status');
+  excerptGroup.append(sceneLabel, excerptButton);
+  fullGroup.append(fullButton, viewedLabel, approveButton);
+  previewControls.append(
+    previewHeading,
+    excerptGroup,
+    fullGroup,
+    previewStatus,
+  );
+  controls.panel.append(previewControls);
+  function previewKey() {
+    return `${state.session.baseHash}:${state.currentPreview?.generatedAt || ''}`;
+  }
+  function renderPreviewControls() {
+    const locked =
+      mutationLocked() ||
+      commands.length > 0 ||
+      invalid ||
+      state.brief.status !== 'draft';
+    const full =
+      state.currentPreview?.kind === 'full' && !state.currentPreview.stale;
+    if (viewedPreviewKey !== previewKey() || commands.length) {
+      viewed.checked = false;
+      viewedPreviewKey = null;
+    }
+    excerptScene.disabled = locked;
+    excerptButton.disabled = locked;
+    fullButton.disabled = locked;
+    viewed.disabled = locked || !full;
+    approveButton.disabled = locked || !full || !viewed.checked;
+    previewStatus.textContent = previewBusy
+      ? 'Создаём смонтированный preview…'
+      : state.brief.status === 'approved'
+        ? 'Утверждено. Финальный рендер запускается отдельно.'
+        : commands.length
+          ? 'Сначала сохраните изменения.'
+          : state.currentPreview?.stale
+            ? 'Предыдущий preview устарел. Создайте новый полный preview.'
+            : '';
+  }
+  viewed.addEventListener('change', () => {
+    viewedPreviewKey = viewed.checked ? previewKey() : null;
+    renderPreviewControls();
+  });
+  async function previewRequest(kind) {
+    if (fullButton.disabled) return;
+    previewBusy = true;
+    viewed.checked = false;
+    viewedPreviewKey = null;
+    clearEditError();
+    renderAll();
+    try {
+      const result = await postEdit('/api/broll/preview', token, {
+        baseRevision: state.session.baseRevision,
+        baseHash: state.session.baseHash,
+        manifestHash: state.session.manifestHash,
+        kind,
+        ...(kind === 'excerpt'
+          ? { sceneIndex: Number(excerptScene.value) }
+          : {}),
+      });
+      if (result.response.status !== 202) throw new Error('preview');
+      let done = false;
+      while (!done) {
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        const response = await fetch(
+          `/api/broll/preview-job?id=${encodeURIComponent(result.data.jobId)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!response.ok) throw new Error('preview');
+        const job = await response.json();
+        if (job.status === 'failed') throw new Error('preview');
+        if (job.status === 'complete') {
+          state = prepareBrowserState(job.state, token);
+          validation = {
+            destinationRevision: null,
+            diff: [],
+            timing: state.timing,
+          };
+          done = true;
+        }
+      }
+    } catch (_) {
+      showEditError(
+        'Preview не готов. Предыдущий файл сохранён; обновите состояние и повторите.',
+      );
+    } finally {
+      previewBusy = false;
+      renderAll();
+    }
+  }
+  excerptButton.addEventListener('click', () => {
+    void previewRequest('excerpt');
+  });
+  fullButton.addEventListener('click', () => {
+    void previewRequest('full');
+  });
+  approveButton.addEventListener('click', async () => {
+    if (approveButton.disabled) return;
+    previewBusy = true;
+    renderAll();
+    try {
+      const result = await postEdit('/api/broll/approve', token, {
+        baseRevision: state.session.baseRevision,
+        baseHash: state.session.baseHash,
+        manifestHash: state.session.manifestHash,
+        confirmPreviewViewed: true,
+      });
+      if (result.response.status !== 201) throw new Error('approval');
+      state = prepareBrowserState(result.data.state, token);
+      clearEditError();
+    } catch (_) {
+      showEditError(
+        'Утверждение не выполнено. Проверьте текущую ревизию и полный preview.',
+      );
+    } finally {
+      previewBusy = false;
+      renderAll();
+    }
+  });
+
+
+  const discovery = createBrollDiscoveryUI({
+    getState: () => state,
+    mediaUrl: (pathname) => authenticatedMediaUrl(pathname, token),
+    queueCommand: dispatch,
+    setBusy: (busy) => { discovering = busy; renderAll(); },
+    request: async (pathname, payload) => {
+      const response = await fetch(pathname, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw Object.assign(new Error('B-roll request failed'), { status: response.status, code: data.error });
+      return data;
+    },
+    refresh: async (latest) => {
+      if (!sameSessionIdentity(state, latest)) {
+        throw Object.assign(new Error('B-roll state changed'), { status: 409 });
+      }
+      state = prepareBrowserState(latest, token);
+    },
+    reportError: async () => classifyMutation409({ expectedState: sessionIdentitySnapshot(), generation: ++validationGeneration }),
+  });
 
   function mutationLocked() {
-    return pending || saving || importing || conflict || transientServerBusy;
+    return pending || saving || importing || discovering || previewBusy || conflict || transientServerBusy;
   }
 
   function allControlsLocked() {
@@ -574,7 +748,7 @@ function createEditor(initialState, token) {
       controls.broll.append(element('p', 'broll-empty', 'Подходящих сцен нет'));
       return;
     }
-    eligible.forEach(({ index }) => {
+    eligible.forEach(({ index, scene }) => {
       const wrapper = element('div', 'broll-field');
       wrapper.dataset.brollScene = String(index);
       const label = element('label', 'broll-asset-label');
@@ -601,6 +775,18 @@ function createEditor(initialState, token) {
         ? state.assets.find((candidate) => candidate.id === selected.assetId)
         : null;
       renderSelectedMediaControls(wrapper, index, selected, asset);
+      const projectedScene = structuredClone(scene);
+      let acknowledged = scene.brollReview === true;
+      for (const command of commands) {
+        if (command.sceneIndex !== index) continue;
+        if (command.type === 'set-broll-query' && projectedScene.brollIntent) {
+          projectedScene.brollIntent.queryOriginal = command.queryOriginal;
+          projectedScene.brollIntent.queryEnglish = command.queryEnglish;
+        }
+        if (command.type === 'replace-broll') acknowledged = false;
+        if (command.type === 'allow-broll-text') acknowledged = command.allowEmbeddedText;
+      }
+      wrapper.append(discovery.render({ index, scene: projectedScene, locked: allControlsLocked(), asset, acknowledged }));
       controls.broll.append(wrapper);
     });
     if (focusBroll && !allControlsLocked()) {
@@ -710,6 +896,7 @@ function createEditor(initialState, token) {
       },
     });
     renderEditChrome();
+    renderPreviewControls();
     document.querySelector('main').dataset.reviewReady = '';
   }
 

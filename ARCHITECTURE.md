@@ -172,6 +172,22 @@ Preview не имеет отдельного HTML- или FFmpeg-дизайна:
 одни scene props, тему, шрифты, media bundle и аудиопорядок; разрешённые различия preview
 ограничены scale, CRF и watermark.
 
+#### 3.2.1 Пакет Reels и hook-family
+
+Пакетный монтаж является оркестрацией нескольких независимых lesson-workspace, а не новой
+render capability. Локальный игнорируемый batch index связывает `itemId`, fingerprint исходника,
+`hookFamily`, состояние approval/QA и относительные пути preview/final. Канонические данные
+каждого результата остаются в его собственном `projects/<id>/project.json`.
+
+Для hook-family агент один раз фиксирует общую основу после точки стыка и проверяет её identity
+во всех вариантах: речь, сцены, графика, субтитры и музыка должны совпасть. Отдельный вариант
+можно вернуть в draft независимо; изменение общей основы инвалидирует approval и QA всей семьи.
+
+Подготовка транскриптов, brief и активов может идти параллельно. Полные Remotion-рендеры в одном
+checkout выполняются последовательно из-за общих legacy `tmp/`; параллельные render workers
+требуют отдельных clone/worktree. Публичный контракт процесса описан в
+[docs/BATCH-REELS-WORKFLOW.md](docs/BATCH-REELS-WORKFLOW.md).
+
 ### 3.3 Review Workbench — локальная проверка до рендера
 
 Эта секция описывает внутренние границы безопасности. Пошаговая работа пользователя с окном
@@ -218,7 +234,9 @@ asset preview даёт `404`, а validate/save — `422`.
 зарегистрированный текущий brief и manifest, сверяет их hashes, воспроизводит allowlist-команды
 и возвращает browser-safe diff. Save повторяет эту проверку на свежем snapshot и через project
 workspace создаёт новую draft Markdown/JSON-ревизию и ровно одну manifest entry. Исходный draft,
-approved-файлы и render history не перезаписываются. Review не вызывает approval или Remotion.
+approved-файлы и render history не перезаписываются. Search, import и Save не вызывают approval
+или final render. Отдельные явные действия пользователя запускают настоящий draft-preview и
+утверждение просмотренной сохранённой ревизии.
 Перед повторным чтением CAS и выделением номера workspace берёт общий project mutation lease.
 Живой или foreign-host owner даёт прежний `409`, а lease завершившегося PID восстанавливается
 без удаления чужих байтов. Review публикует Markdown и канонический JSON через atomic
@@ -228,7 +246,8 @@ manifest. Поэтому `/api/state` продолжает видеть стар
 следующий свободный номер ревизии.
 
 Редактор принимает только `move-boundary`, `replace-broll`, `set-broll-fit`,
-`set-broll-video-start` и `set-broll-audio-mode` с непрозрачным `asset-N` из текущего allowlist.
+`set-broll-video-start`, `set-broll-audio-mode`, `set-broll-query` и `allow-broll-text`.
+Выбор медиа использует непрозрачный `asset-N` из текущего allowlist.
 Первая команда меняет только `left.end` и `right.start`: это adjacent edit, а не global ripple.
 Остальные выбирают image/video, `contain|cover`, покадрово округлённый старт и
 `mute|mix|replace`; video default равен `contain`, frame 0, `mute`, image default — `cover`.
@@ -236,7 +255,69 @@ manifest. Поэтому `/api/state` продолжает видеть стар
 исходника; поздние сцены не сдвигаются. Undo/redo хранит команды только в памяти браузера;
 серверный validate заново строит registry, пробует/хэширует тот же открытый descriptor и остаётся
 источником геометрии, diff и timing audit. Текст, scene type, effects, keyframes, masks и прочие
-поля fail closed как unsupported diff.
+поля fail closed как unsupported diff. `set-broll-query` меняет только два поисковых запроса
+в существующем intent, а `allow-broll-text` - разрешение на встроенный текст выбранного файла.
+
+#### Поиск B-roll и границы доверия
+
+В draft сцена может содержать `brollIntent` без файла: цель кадра, фразу из транскрипта,
+исходный и английский запросы. Генератор сохраняет такую сцену, а Remotion показывает штатную
+`[ B-ROLL ]` заглушку. Английский запрос пишет текущий агент или человек; отдельного LLM API нет.
+Approved не содержит intent: незаполненный блокирует утверждение, заполненный удаляется из
+approved-копии с сохранением происхождения материала.
+
+`scripts/broll/pexels.js` реализует provider-интерфейс для официального поиска фото и видео.
+`config.js` читает необязательный локальный ключ; браузер его не получает. `candidates.js`
+создаёт отдельный allowlist на Review-сессию: случайные candidate/search ID привязаны к сцене,
+запросу и сроку жизни. Повторный поиск заменяет поколение кандидатов. Карточки содержат автора,
+публичную страницу Pexels, лицензию и характеристики; изображения и короткие видео идут через
+аутентифицированный локальный proxy. Read-only сессия не получает доступ к поиску или proxy.
+
+Remotion по умолчанию переносит все поля корневого `.env` в браузер рендера. Поэтому центральный
+resolver его CLI явно задаёт `config/remotion-public.env` без значений. Эта граница действует
+для preview, final, chunks и still; разрешённые `REMOTION_*` настройки сохраняются. Ключи
+провайдеров также исключены из наследуемого окружения preview-job. Реальный ключ не входит
+в браузерную модель или код сцены; regression проверяет поведение установленного Remotion
+с синтетическим ключом во временном fixture-проекте.
+Префикс `REMOTION_*` предназначен только для публичных значений. Настройки с этим префиксом из
+корневого `.env` сохраняются; значения из `.env.local` нужно явно экспортировать в запускающий
+процесс. Самостоятельный запуск сырого `npx remotion` обходит resolver движка.
+
+`scripts/broll/remote.js` разрешает только HTTPS на точных доменах провайдера. Каждый redirect
+заново проходит проверку адреса и публичного DNS; соединение использует проверенный IP с исходным
+TLS hostname. Ограничены redirect, время, заголовки и фактически прочитанные байты, включая поток
+без достоверного Content-Length. Сжатые ответы, private/loopback IP, произвольные URL, ошибочный
+MIME и оборванные ответы отклоняются. Ошибки фиксированные, без ответа провайдера или ключа.
+
+`scripts/review/broll-discovery.js` связывает поиск с существующим импортом. Только явное
+«Выбрать» скачивает полный файл; затем работают прежние quarantine, probe, полный decode,
+нормализация и SHA-256. CDN URL не становится `brollSrc`. Завершение асинхронной операции
+повторно проверяет snapshot проекта и поколение поиска. Выбранный импортированный asset
+назначается обычной командой `replace-broll`; Save остаётся immutable draft-публикацией.
+
+Для discovery `asset.json` версии 3 расширяет v2 полями `provenance` и `textScan`.
+Provenance содержит provider ID, источник, автора, лицензию, запросы, время получения и rendition;
+геометрия, длительности, наличие аудио и hashes берутся из нормализованных байтов. v1/v2
+сохраняют прежние правила. `text-scan.js` локально вызывает Tesseract для изображения или трёх
+кадров видео; pipe, время и вывод ограничены. Распознанный текст даёт `needs-review`, отсутствие
+инструмента или ошибка - `unavailable`. OCR не доказывает отсутствие логотипа или текста.
+
+Машинный результат не меняется после импорта. Разрешение пользователя хранится в сцене как
+`brollReview={assetSha256,scanSha256,allowEmbeddedText:true}`. Браузер посылает только boolean;
+сервер подставляет hashes проверенного asset. Замена очищает разрешение. Approval проверяет
+его по открытым metadata/media descriptors и повторяет identity/hash barrier перед публикацией.
+Без совпадающего разрешения `needs-review` и `unavailable` блокируют approval.
+
+Discovery устанавливает `brollReviewPolicy: "preview-required"`; approval также определяет
+необходимость гейта по проверенной metadata v3, даже если поле policy пропущено вручную.
+Публикация preview сохраняет
+`briefSha256` точных байтов прочитанного draft и `sourceSha256` исходника. Полный preview должен
+соответствовать текущим байтам draft, исходнику, формату и полному диапазону. Фрагмент или старый
+preview не открывает approval. После явного подтверждения просмотра approved получает
+`brollApproval={draftSha256,previewSha256,confirmedAt}`. Повторная draft-правка удаляет receipt
+и делает старый preview неактуальным. Старые approved-проекты с metadata v1/v2 сохраняют
+совместимость. Final render запускается отдельно и использует только approved локальные
+проверенные assets; для v3 он также требует policy и receipt.
 
 Позиция маленького video preview — локальное UI-состояние по паре scene/opaque asset: rerender
 после validate, настройки, Undo или Redo восстанавливает playhead, но не отправляет его в brief.
@@ -424,7 +505,7 @@ Remotion `OffthreadVideo`. `trimBefore = round(trimStartSec × fps)`, а дли�
 | `blur-overlay` | сильный числовой или смысловой акцент |
 | `text-only` | крупная цитата без спикера |
 | `stat` | реально произнесённая метрика |
-| `broll` | визуальный пример из доступного файла; `showSpeakerPip: false` убирает окно спикера и оставляет медиа полноэкранным |
+| `broll` | визуальный пример из локального файла; draft допускает `brollIntent` с заглушкой до выбора; `showSpeakerPip: false` убирает окно спикера и оставляет медиа полноэкранным |
 
 `chart` реализован как эксперимент, но запрещён в автоматическом lesson-brief.
 Сторона `fullscreen/side-overlay` вычисляется по `facePos`: графика всегда занимает отрицательное
@@ -469,6 +550,8 @@ symlink; symlink прерывает построение cache key.
 
 - `projects/YYYY.MM.DD_<slug>/` – основной локальный workspace одного ролика. В нём лежат
   `project.json`, один исходник, транскрипт, ревизии brief, активы, превью, версии рендера и финал.
+- Локальный batch index – игнорируемый сводный указатель на независимые project workspace; он не
+  заменяет их manifest, не является release asset и не попадает в Git.
 - `project.json` – журнал относительных project-путей, статусов brief и рендеров. Только
   `source.originalPath` хранит исторический абсолютный путь исходника.
 - `assets/broll/images|video/<uuid>/` – immutable normalized master и bounded `asset.json`;
@@ -499,27 +582,40 @@ portable descriptor-relative `unlinkat`/`rmdirat`, поэтому между п�
 
 ## 7. Переменные окружения
 
-Ниже перечислены пользовательские runtime-переменные из `process.env`; системный `PATH` и
-внутренние test hooks из `.env.example` пользователю задавать не нужно.
+Ниже перечислены пользовательские runtime-переменные. Pexels-настройки читаются из окружения
+или локального `.env`; системный `PATH` и внутренние test hooks из `.env.example` пользователю
+задавать не нужно.
 
 | Переменная | Обязательность | Назначение |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | одна из двух для создания lesson draft | LLM-проруф и раскладка сцен |
-| `OPENAI_API_KEY` | альтернатива Anthropic | LLM-проруф, lesson brief и слайды |
+| `ANTHROPIC_API_KEY` | только legacy/developer opt-in | provider-режим старого генератора brief; стандартный монтаж не использует |
+| `OPENAI_API_KEY` | только явный отдельный opt-in | provider-режим или подтверждённая генерация изображения, когда текущая модель не умеет её сама |
+| `BROLL_SEARCH_PROVIDER` | опционально | провайдер интернет-поиска B-roll; в 1.6.0 поддерживается только `pexels` |
+| `PEXELS_API_KEY` | опционально | бесплатный ключ официального Pexels API; нужен только локальному Review server для поиска |
+| `PIXABAY_API_KEY` | зарезервировано | будущий провайдер, в 1.6.0 не читается рабочим кодом |
+| `OPENVERSE_CLIENT_ID` | зарезервировано | будущий провайдер, в 1.6.0 не читается рабочим кодом |
+| `OPENVERSE_CLIENT_SECRET` | зарезервировано | будущий провайдер, в 1.6.0 не читается рабочим кодом |
 | `THEMES_EXT` | опционально | корневая папка внешних тем `<id>/theme.json` |
 | `AUTOMONTAGE_FFMPEG_DIR` | опционально | каталог отдельной `ffmpeg` + `ffprobe`; CLI ставит его первым в дочерний `PATH` |
 
-Основной Dynamic-рендер и `automontage demo` работают без API-ключей.
+Dynamic, канонический lesson через текущую подписку Claude Code/Codex, Review, preview, render,
+QA и `automontage demo` работают без provider API-ключей.
 
 ## 8. Внешние зависимости
 
 - Node.js 20+ и npm – CLI, тесты, Remotion.
 - Python 3 + пакеты из `requirements.txt` – Whisper/OpenCV-сценарии.
+- faster-whisper выполняет распознавание локально; первый запуск может скачать выбранную модель
+  из Hugging Face, после чего она используется из локального кэша без provider API-ключа.
 - ffmpeg/ffprobe – анализ, аудио, нормализация импорта, сборка и контроль результата. Для фото
   в Review обязателен encoder `libwebp`; video import также использует `libx264`, `libvpx`,
   `libopus` и AAC. `automontage doctor` проверяет WebP и объясняет выбор отдельной полной сборки.
 - Chromium для Playwright – browser regression tests и пересборка PNG-моков скриптами
   `shot-*`; обычный Review открывается в установленном системном браузере.
+- Tesseract OCR локально проверяет изображения и три кадра выбранного видео на встроенный текст.
+  Его отсутствие превращается в подтверждаемое предупреждение и не отключает основной монтаж.
+- Официальный Pexels API является единственным сетевым провайдером рабочего B-roll-поиска в
+  1.6.0. Pixabay/Openverse объявлены только как зарезервированные будущие интеграции.
 
 ## 9. Инварианты безопасности и качества
 
@@ -532,13 +628,16 @@ portable descriptor-relative `unlinkat`/`rmdirat`, поэтому между п�
 - Все визуальные слои используют общий таймкод; A/V-синхрон проверяется в начале, середине и конце.
 - Тексты должны оставаться в safe-zone обеих ориентаций.
 - Секреты, приватные темы, пользовательские медиа и локальная память не попадают в Git.
+- `scripts/check-public-privacy.js` проверяет tracked tree в CI и staged blobs перед коммитом;
+  Gitleaks отдельно сканирует секреты, поэтому один gate не подменяет другой.
 - Внешние инструменты получают отдельные argv без shell; длинные процессы наследуют stdio,
   а короткий capture ограничен явным `maxBuffer` и проверяет error/status/signal.
 - Release checker читает committed Git-объект, а не рабочую папку; smoke подтверждает оба
   публичных render path и после них сверяет hashes защищённых transcript/captions fixtures.
 - Временное принятие dependency advisory допустимо только через неистёкшую машинно
-  проверяемую запись в `SECURITY.md`: review date совпадает с датой текущего release, не лежит
-  в будущем, а документированная цепочка точно совпадает с candidate `package-lock.json`.
+  проверяемую запись в `SECURITY.md`: review date совпадает с датой текущего release, уже
+  наступила хотя бы в UTC+14, а документированная цепочка точно совпадает с candidate
+  `package-lock.json`.
 
 ## 10. Как расширять
 

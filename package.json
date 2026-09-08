@@ -1,15 +1,15 @@
 {
   "name": "automontage-agent",
-  "version": "1.4.0",
+  "version": "1.6.0",
   "description": "Движок автомонтажа видео для ИИ-агента (Claude Code/Codex). Кросс-платформенный: Windows/macOS/Linux.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Ntmib/AutoMontage-Agent.git"
+    "url": "git+https://github.com/mcdenil-skills/AutoMontage-Agent.git"
   },
-  "homepage": "https://github.com/Ntmib/AutoMontage-Agent#readme",
+  "homepage": "https://github.com/mcdenil-skills/AutoMontage-Agent#readme",
   "bugs": {
-    "url": "https://github.com/Ntmib/AutoMontage-Agent/issues"
+    "url": "https://github.com/mcdenil-skills/AutoMontage-Agent/issues"
   },
   "bin": {
     "automontage": "scripts/cli.js"
@@ -20,15 +20,17 @@
   "scripts": {
     "doctor": "node scripts/doctor.js",
     "demo": "node scripts/cli.js demo",
+    "generate:fixtures": "node scripts/generate-neutral-fixtures.js",
     "montage": "node scripts/build.js",
     "preview": "node scripts/preview.js",
     "qa:preview": "node scripts/qa-preview.js",
     "test:video-edit": "node --test tests/lesson-preview.test.js tests/source-edit.test.js tests/qa-preview.test.js",
     "review": "node scripts/review/cli.js",
+    "check:privacy": "node scripts/check-public-privacy.js --tracked",
     "check:release": "node scripts/check-release.js",
     "smoke:release": "node scripts/smoke-release.js",
     "test": "node --test tests/*.test.js",
-    "test:review-ui": "playwright test tests/review-ui.spec.js --project=chromium"
+    "test:review-ui": "playwright test tests/review-ui.spec.js tests/broll-review-ui.spec.js --project=chromium"
   },
   "dependencies": {
     "@material/material-color-utilities": "^0.4.0",

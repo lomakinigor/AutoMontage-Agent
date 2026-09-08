@@ -1,0 +1,113 @@
+{
+  "description": "Two independent invocations of the portable CPU harness on the same local thumbnails/model; filesystem caches not cleared.",
+  "runs": [
+    {
+      "name": "portable-inference-1",
+      "inputHashes": {
+        "corpusSha256": "9fd0eccf580ff4796b82c9a7b5bcd6972a3640d3108ea67820a8f8bf2d9a0a8c",
+        "labelsSha256": "545cc2319c62b1731c1a484b93b1f10af0bdbc494394673e5c09cfc993f2cbbd",
+        "blindMapSha256": "5b92dba7da75c7291554232b2a8ffec0b16226b28a99584ede5bb18678fa3f71"
+      },
+      "modelManifestSha256": "1f13fd04b8d5d9c0e2334dd9a1e1ddf4b1ca8544ee3f1e5dfb42c2d6ba2d617c",
+      "measurements": {
+        "importsSeconds": 4.158766749998904,
+        "modelSeconds": 7.6900042919951375,
+        "querySeconds": {
+          "object": 0.5562233329983428,
+          "person": 0.4859637089975877,
+          "horizontal": 0.5343172089997097,
+          "no-people": 0.49555120799777796,
+          "abstract": 0.3990588749948074
+        },
+        "peakRssBytes": 3338960896,
+        "parameterCount": 375187970,
+        "device": "cpu",
+        "precision": "fp32",
+        "threads": 4,
+        "batchSize": 4,
+        "python": "3.12.13",
+        "torch": "2.14.0",
+        "openClip": "3.3.0"
+      },
+      "totalSeconds": 15.541341832999024,
+      "macroMetrics": {
+        "providerOrder": {
+          "meanRelevanceAt5": 1.7600000000000002,
+          "precisionAt5": 0.6,
+          "top1Relevance": 1.6
+        },
+        "siglipRu": {
+          "meanRelevanceAt5": 2.4,
+          "precisionAt5": 0.96,
+          "top1Relevance": 2.8
+        },
+        "siglipEn": {
+          "meanRelevanceAt5": 2.32,
+          "precisionAt5": 0.9199999999999999,
+          "top1Relevance": 2.8
+        },
+        "siglipBilingualMean": {
+          "meanRelevanceAt5": 2.32,
+          "precisionAt5": 0.9199999999999999,
+          "top1Relevance": 2.8
+        }
+      },
+      "allOriginalRanksGradesMetricsEqual": true,
+      "maxAbsoluteCosineDifferenceFromOriginal": 0.0
+    },
+    {
+      "name": "portable-inference-2",
+      "inputHashes": {
+        "corpusSha256": "9fd0eccf580ff4796b82c9a7b5bcd6972a3640d3108ea67820a8f8bf2d9a0a8c",
+        "labelsSha256": "545cc2319c62b1731c1a484b93b1f10af0bdbc494394673e5c09cfc993f2cbbd",
+        "blindMapSha256": "5b92dba7da75c7291554232b2a8ffec0b16226b28a99584ede5bb18678fa3f71"
+      },
+      "modelManifestSha256": "1f13fd04b8d5d9c0e2334dd9a1e1ddf4b1ca8544ee3f1e5dfb42c2d6ba2d617c",
+      "measurements": {
+        "importsSeconds": 3.5539179999977932,
+        "modelSeconds": 7.503738500003237,
+        "querySeconds": {
+          "object": 0.5702281670019147,
+          "person": 0.5452593329973752,
+          "horizontal": 0.5796222499993746,
+          "no-people": 0.5279949579999084,
+          "abstract": 0.43217125000228407
+        },
+        "peakRssBytes": 3204907008,
+        "parameterCount": 375187970,
+        "device": "cpu",
+        "precision": "fp32",
+        "threads": 4,
+        "batchSize": 4,
+        "python": "3.12.13",
+        "torch": "2.14.0",
+        "openClip": "3.3.0"
+      },
+      "totalSeconds": 14.612921832995198,
+      "macroMetrics": {
+        "providerOrder": {
+          "meanRelevanceAt5": 1.7600000000000002,
+          "precisionAt5": 0.6,
+          "top1Relevance": 1.6
+        },
+        "siglipRu": {
+          "meanRelevanceAt5": 2.4,
+          "precisionAt5": 0.96,
+          "top1Relevance": 2.8
+        },
+        "siglipEn": {
+          "meanRelevanceAt5": 2.32,
+          "precisionAt5": 0.9199999999999999,
+          "top1Relevance": 2.8
+        },
+        "siglipBilingualMean": {
+          "meanRelevanceAt5": 2.32,
+          "precisionAt5": 0.9199999999999999,
+          "top1Relevance": 2.8
+        }
+      },
+      "allOriginalRanksGradesMetricsEqual": true,
+      "maxAbsoluteCosineDifferenceFromOriginal": 0.0
+    }
+  ]
+}

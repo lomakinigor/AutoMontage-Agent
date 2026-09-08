@@ -278,6 +278,62 @@ test('import publishes video when ffprobe average FPS is 0/0 but real FPS is val
   assert.equal(fs.existsSync(path.join(path.dirname(result.filePath), 'asset.json')), true);
 });
 
+test('discovery import publishes v3 evidence while manual import remains v2', async (t) => {
+  const projectDir = tempProject(t);
+  const provenance = {
+    provider: 'pexels', providerAssetId: '123',
+    sourcePage: 'https://www.pexels.com/photo/example-123/',
+    author: { name: 'Jane', url: 'https://www.pexels.com/@jane/' },
+    license: { name: 'Pexels License', url: 'https://www.pexels.com/license/' },
+    queryOriginal: 'офис', queryEnglish: 'office',
+    retrievedAt: '2026-09-08T12:00:00.000Z',
+    rendition: { id: 'original', width: 320, height: 180, mimeType: 'image/png' },
+  };
+  const textScan = {
+    status: 'needs-review', text: 'ACME', reasons: ['embedded-text-detected'], engine: 'tesseract',
+  };
+  const result = await importReviewMedia({
+    request: Readable.from([Buffer.from('x')]), projectDir, outputFps: 25,
+    headers: rawHeaders('found.png', 'image/png', 1), controller: createImportController(),
+    statfsImpl: () => ({ bavail: 10n ** 12n, bsize: 4096n }), randomId: () => UUID,
+    runMediaProcessImpl: fakeProcessor({ source: probeJson({ kind: 'image' }) }),
+    provenance, scanEmbeddedTextImpl: async (input) => {
+      assert.equal(input.filePath.endsWith('/bundle/media.webp'), true);
+      return textScan;
+    },
+  });
+  const published = JSON.parse(fs.readFileSync(path.join(path.dirname(result.filePath), 'asset.json')));
+  assert.equal(published.version, 3);
+  assert.deepEqual(published.provenance, provenance);
+  assert.deepEqual(published.textScan, textScan);
+});
+
+test('discovery import cancelled after scanning publishes no bundle', async (t) => {
+  const projectDir = tempProject(t);
+  const abort = new AbortController();
+  const provenance = {
+    provider: 'pexels', providerAssetId: '123',
+    sourcePage: 'https://www.pexels.com/photo/example-123/',
+    author: { name: 'Jane', url: 'https://www.pexels.com/@jane/' },
+    license: { name: 'Pexels License', url: 'https://www.pexels.com/license/' },
+    queryOriginal: 'офис', queryEnglish: 'office',
+    retrievedAt: '2026-09-08T12:00:00.000Z',
+    rendition: { id: 'original', width: 320, height: 180, mimeType: 'image/png' },
+  };
+  await assert.rejects(importReviewMedia({
+    request: Readable.from([Buffer.from('x')]), signal: abort.signal,
+    projectDir, outputFps: 25, headers: rawHeaders('found.png', 'image/png', 1),
+    controller: createImportController(),
+    statfsImpl: () => ({ bavail: 10n ** 12n, bsize: 4096n }), randomId: () => UUID,
+    runMediaProcessImpl: fakeProcessor({ source: probeJson({ kind: 'image' }) }), provenance,
+    scanEmbeddedTextImpl: async () => {
+      abort.abort();
+      return { status: 'clear', text: '', reasons: [], engine: 'tesseract' };
+    },
+  }), (error) => error.code === 'MEDIA_PROCESS_ABORTED');
+  assert.equal(fs.existsSync(path.join(projectDir, 'assets', 'broll', 'images', UUID)), false);
+});
+
 test('video normalization uses visual duration, even padding, explicit audio duration, and hard encoder bounds', async (t) => {
   const projectDir = tempProject(t);
   const calls = [];
@@ -1150,16 +1206,17 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
   const hasWebpEncoder = ffmpegEncoderAvailable('libwebp');
   const hasAv1Encoder = ffmpegEncoderAvailable('libaom-av1');
   const cases = [
-    ['tiny.avif', files.avif, 'image/avif', 'image', 'av1'],
-    ['tiny.jpg', files.jpeg, 'image/jpeg', 'image'],
-    ['animated.gif', files.animatedGif, 'image/gif', 'image'],
-    ['transparent.png', files.transparentPng, 'image/png', 'image'],
-    ['silent.mp4', files.silentLandscape, 'video/mp4', 'video'],
-    ['audio.mp4', files.audioPortrait, 'video/mp4', 'video'],
-    ['rotated-vfr.mov', files.rotatedVfr, 'video/quicktime', 'video'],
+    ['tiny.avif', 'tiny.avif', files.avif, 'image/avif', 'image', 'av1'],
+    ['real JPEG survives quarantine upload.bin', 'tiny.jpg', files.jpeg, 'image/jpeg', 'image'],
+    ['animated.gif', 'animated.gif', files.animatedGif, 'image/gif', 'image'],
+    ['transparent.png', 'transparent.png', files.transparentPng, 'image/png', 'image'],
+    ['silent.mp4', 'silent.mp4', files.silentLandscape, 'video/mp4', 'video'],
+    ['audio.mp4', 'audio.mp4', files.audioPortrait, 'video/mp4', 'video'],
+    ['rotated-vfr.mov', 'rotated-vfr.mov', files.rotatedVfr, 'video/quicktime', 'video'],
+    ['real WebM normalizes master and preview', 'vp8-opus.webm', files.webm, 'video/webm', 'video'],
   ];
-  for (const [filename, sourcePath, mime, kind, requirement] of cases) {
-    await t.test(filename, async (subtest) => {
+  for (const [name, filename, sourcePath, mime, kind, requirement] of cases) {
+    await t.test(name, async (subtest) => {
       if (requirement === 'av1' && !hasAv1Encoder) {
         subtest.skip('ffmpeg libaom-av1 encoder is unavailable; real AVIF fixture cannot be generated');
         return;
@@ -1176,6 +1233,12 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
         randomId: () => crypto.randomUUID(), runMediaProcessImpl: runMediaProcess,
       });
       assert.equal(result.mediaKind, kind);
+      const metadata = JSON.parse(fs.readFileSync(
+        path.join(path.dirname(result.filePath), 'asset.json'),
+        'utf8',
+      ));
+      assert.equal(metadata.mediaKind, kind);
+      assert.match(metadata.canonicalSha256, /^[a-f0-9]{64}$/);
       const decode = spawnSync('ffmpeg', ['-v', 'error', '-i', result.filePath, '-f', 'null', '-'], { encoding: 'utf8' });
       assert.equal(decode.status, 0, decode.stderr);
       if (filename === 'animated.gif') {
@@ -1203,7 +1266,7 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
         assert.ok(Number(proxyVideo.avg_frame_rate.split('/')[0]) / Number(proxyVideo.avg_frame_rate.split('/')[1]) <= 30);
         const masterAudio = master.streams.find((stream) => stream.codec_type === 'audio');
         const proxyAudio = proxy.streams.find((stream) => stream.codec_type === 'audio');
-        if (filename !== 'audio.mp4') {
+        if (!['audio.mp4', 'vp8-opus.webm'].includes(filename)) {
           assert.equal(masterAudio, undefined);
           assert.equal(proxyAudio, undefined);
         } else {
@@ -1231,6 +1294,16 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
     await assert.rejects(importReviewMedia({
       request: fs.createReadStream(files.renamedAv1Avif), projectDir, outputFps: 25,
       headers: rawHeaders('renamed-av1-video.avif', 'image/avif', bytes),
+      controller: createImportController(), randomId: () => crypto.randomUUID(),
+      runMediaProcessImpl: runMediaProcess,
+    }), (error) => error.status === 422 && error.code === 'MEDIA_IMPORT_CONTENT_MISMATCH');
+  });
+  await t.test('renamed WebM video is rejected as JPEG', async () => {
+    const projectDir = tempProject(t);
+    const bytes = fs.statSync(files.webm).size;
+    await assert.rejects(importReviewMedia({
+      request: fs.createReadStream(files.webm), projectDir, outputFps: 25,
+      headers: rawHeaders('renamed-video.jpg', 'image/jpeg', bytes),
       controller: createImportController(), randomId: () => crypto.randomUUID(),
       runMediaProcessImpl: runMediaProcess,
     }), (error) => error.status === 422 && error.code === 'MEDIA_IMPORT_CONTENT_MISMATCH');

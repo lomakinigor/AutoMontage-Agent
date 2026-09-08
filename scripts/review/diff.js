@@ -113,6 +113,29 @@ function addAssetChanges(before, after, expected, changes) {
   }
 }
 
+function addBrollQueryChanges(before, after, expected, changes) {
+  for (let index = 0; index < before.scenes.length; index += 1) {
+    const beforeIntent = before.scenes[index]?.brollIntent;
+    const afterIntent = after.scenes[index]?.brollIntent;
+    if (isDeepStrictEqual(beforeIntent, afterIntent)) continue;
+    if (before.scenes[index]?.scene !== 'broll' || after.scenes[index]?.scene !== 'broll'
+      || !beforeIntent || !afterIntent
+      || beforeIntent.goal !== afterIntent.goal
+      || beforeIntent.sourceText !== afterIntent.sourceText
+      || beforeIntent.semanticDescription !== afterIntent.semanticDescription) unsupportedDiff();
+    const expectedIntent = deepClone(beforeIntent);
+    expectedIntent.queryOriginal = afterIntent.queryOriginal;
+    expectedIntent.queryEnglish = afterIntent.queryEnglish;
+    if (!isDeepStrictEqual(expectedIntent, afterIntent)) unsupportedDiff();
+    expected.scenes[index].brollIntent = expectedIntent;
+    changes.push({
+      kind: 'broll-query', scene: index,
+      from: { queryOriginal: beforeIntent.queryOriginal, queryEnglish: beforeIntent.queryEnglish },
+      to: { queryOriginal: afterIntent.queryOriginal, queryEnglish: afterIntent.queryEnglish },
+    });
+  }
+}
+
 function diffLessonBrief({ before, after } = {}) {
   if (!validBrief(before) || !validBrief(after) || !allowedStatusTransition(before, after)
     || before.scenes.length !== after.scenes.length) {
@@ -121,9 +144,25 @@ function diffLessonBrief({ before, after } = {}) {
 
   const expected = deepClone(before);
   expected.status = 'draft';
+  delete expected.brollApproval;
+  if (before.brollReviewPolicy === undefined
+    && after.brollReviewPolicy === 'preview-required') {
+    expected.brollReviewPolicy = 'preview-required';
+  }
   const changes = [];
   addBoundaryChanges(before, after, expected, changes);
   addAssetChanges(before, after, expected, changes);
+  addBrollQueryChanges(before, after, expected, changes);
+  for (let index = 0; index < before.scenes.length; index += 1) {
+    const previous = before.scenes[index].brollReview;
+    const next = after.scenes[index].brollReview;
+    if (previous === next) continue;
+    if (before.scenes[index].scene !== 'broll' || after.scenes[index].scene !== 'broll'
+      || (previous !== undefined && previous !== true) || (next !== undefined && next !== true)) unsupportedDiff();
+    if (next === true) expected.scenes[index].brollReview = true;
+    else delete expected.scenes[index].brollReview;
+    changes.push({kind: 'embedded-text', scene: index, from: previous === true, to: next === true});
+  }
   if (!isDeepStrictEqual(expected, after)) unsupportedDiff();
   return changes;
 }
