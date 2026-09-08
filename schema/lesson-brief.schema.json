@@ -16,6 +16,16 @@
   "properties": {
     "version": { "const": 1 },
     "status": { "enum": ["draft", "approved"] },
+    "brollApproval": {
+      "type":"object", "additionalProperties":false,
+      "required":["draftSha256","previewSha256","confirmedAt"],
+      "properties":{
+        "draftSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+        "previewSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+        "confirmedAt":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"}
+      }
+    },
+    "brollReviewPolicy": { "const": "preview-required" },
     "source": { "type": "string", "minLength": 1 },
     "theme": { "type": ["string", "object"] },
     "title": { "type": "string" },
@@ -137,6 +147,16 @@
           "statCream": { "type": "string" },
           "statOrange": { "type": "string" },
           "brollSrc": { "type": "string", "minLength": 1 },
+          "brollReview": {
+            "type": "object", "additionalProperties": false,
+            "required": ["assetSha256", "scanSha256", "allowEmbeddedText"],
+            "properties": {
+              "assetSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "scanSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "allowEmbeddedText": { "const": true }
+            }
+          },
+          "brollIntent": { "$ref": "#/definitions/brollIntent" },
           "showSpeakerPip": { "type": "boolean" },
           "brollMedia": {
             "oneOf": [
@@ -169,6 +189,10 @@
         },
         "allOf": [
           {
+            "if": { "required": ["brollReview"] },
+            "then": { "required": ["brollMedia"], "properties": { "scene": { "const": "broll" } } }
+          },
+          {
             "if": { "properties": { "scene": { "const": "fullscreen" } } },
             "then": { "required": ["caption"] }
           },
@@ -196,9 +220,13 @@
             "if": { "properties": { "scene": { "const": "broll" } } },
             "then": {
               "required": ["headCream", "headOrange"],
-              "oneOf": [
-                { "required": ["brollSrc"], "not": { "required": ["brollMedia"] } },
-                { "required": ["brollMedia"], "not": { "required": ["brollSrc"] } }
+              "allOf": [
+                { "anyOf": [
+                  { "required": ["brollSrc"] },
+                  { "required": ["brollMedia"] },
+                  { "required": ["brollIntent"] }
+                ] },
+                { "not": { "required": ["brollSrc", "brollMedia"] } }
               ]
             }
           }
@@ -207,6 +235,18 @@
     }
   },
   "definitions": {
+    "brollIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal", "sourceText", "queryOriginal", "queryEnglish"],
+      "properties": {
+        "goal": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$" },
+        "sourceText": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$" },
+        "queryOriginal": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$" },
+        "queryEnglish": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$" },
+        "semanticDescription": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$" }
+      }
+    },
     "facePos": {
       "type": "object",
       "additionalProperties": false,
@@ -215,5 +255,9 @@
         "y": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     }
-  }
+  },
+  "allOf": [{"if":{"properties":{"status":{"const":"approved"},"brollReviewPolicy":{"const":"preview-required"}},"required":["status","brollReviewPolicy"]},"then":{"required":["brollApproval"]}}, {
+    "if": { "properties": { "status": { "const": "approved" } }, "required": ["status"] },
+    "then": { "properties": { "scenes": { "items": { "not": { "required": ["brollIntent"] } } } } }
+  }]
 }

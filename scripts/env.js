@@ -93,7 +93,14 @@ function resolveRemotionCommand(root = ROOT) {
   if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(entry)) {
     throw new Error('@remotion/cli bin.remotion недоступен; повтори npm ci и npm run doctor');
   }
-  return { command: process.execPath, argsPrefix: [entry] };
+  // Remotion exposes every key from its auto-discovered .env/.env.local to the
+  // browser. Always select the packaged empty file instead. Its CLI parser
+  // accepts this option before the subcommand; all render/still callers inherit
+  // the protection, while public REMOTION_* process variables still work.
+  return {
+    command: process.execPath,
+    argsPrefix: [entry, `--env-file=${path.join(ROOT, 'config', 'remotion-public.env')}`],
+  };
 }
 
 function remotionBin() {

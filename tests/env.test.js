@@ -69,7 +69,10 @@ test('Remotion resolves the package bin and always runs it through Node', (t) =>
 
   assert.deepEqual(resolveRemotionCommand(root), {
     command: process.execPath,
-    argsPrefix: [path.join(packageDir, 'remotion-cli.js')],
+    argsPrefix: [
+      path.join(packageDir, 'remotion-cli.js'),
+      `--env-file=${path.resolve(__dirname, '../config/remotion-public.env')}`,
+    ],
   });
 });
 

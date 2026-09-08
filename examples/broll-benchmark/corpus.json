@@ -1,0 +1,1444 @@
+{
+  "schemaVersion": 1,
+  "provider": "openverse",
+  "retrievedAt": "2026-09-07T20:10:14.476054+00:00",
+  "purpose": "Frozen exploratory thumbnail corpus. No image bytes redistributed; source licenses require independent verification before publishing media.",
+  "originalCorpusSha256": "b566bfe06725fca03ac21d731108c73412c9f05a3f714110d99a98923f78fdc1",
+  "bindings": {
+    "labelsSha256": "545cc2319c62b1731c1a484b93b1f10af0bdbc494394673e5c09cfc993f2cbbd",
+    "blindMapSha256": "5b92dba7da75c7291554232b2a8ffec0b16226b28a99584ede5bb18678fa3f71"
+  },
+  "queries": [
+    {
+      "id": "object",
+      "providerQuery": "robot vacuum",
+      "ru": "робот-пылесос объезжает мебель в современной квартире",
+      "en": "robot vacuum cleaning a modern apartment around furniture",
+      "requestUrl": "https://api.openverse.org/v1/images/?q=robot+vacuum&page_size=12&license_type=commercial%2Cmodification",
+      "status": 200,
+      "resultCount": 240,
+      "rawResponseSha256": "217b69aeff51494a6854a32b8f73c7e4ed7914d0fb75be2e299d9d0ac6319881",
+      "candidates": [
+        {
+          "id": "d33311fe-a91b-429a-9bd0-6e5a88047c8e",
+          "providerRank": 1,
+          "title": "Robot vacuum in charge dock",
+          "sourceUrl": "https://www.flickr.com/photos/16105436@N00/176405578",
+          "originalUrl": "https://live.staticflickr.com/55/176405578_af036446cf_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/d33311fe-a91b-429a-9bd0-6e5a88047c8e/thumb/",
+          "creator": {
+            "name": "Kai Hendry",
+            "profileUrl": "https://www.flickr.com/photos/16105436@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/d33311fe-a91b-429a-9bd0-6e5a88047c8e.img",
+          "bytes": 30051,
+          "sha256": "c65d73b6c6bbee79eb813779ed7f9a2f386fba4b135b4c15f3ccbb9d486c8426",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "1d77caf3-6ca2-4101-b48a-c40554bfee5a",
+          "providerRank": 2,
+          "title": "RVC3N Robotic Vacuum Cleaner 'Loeder' chilling in her base station",
+          "sourceUrl": "https://www.flickr.com/photos/52365139@N05/8500681094",
+          "originalUrl": "https://live.staticflickr.com/8525/8500681094_9a49489def_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/1d77caf3-6ca2-4101-b48a-c40554bfee5a/thumb/",
+          "creator": {
+            "name": "dvanzuijlekom",
+            "profileUrl": "https://www.flickr.com/photos/52365139@N05"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/1d77caf3-6ca2-4101-b48a-c40554bfee5a.img",
+          "bytes": 64451,
+          "sha256": "c12c6a0c04c58548228dab10e4f52e28fefc9b1c6d694d1af61ff6d369d581e6",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "8b92f6ce-c413-40d7-b687-d6496c0b4f49",
+          "providerRank": 3,
+          "title": "RVC3N Robotic Vacuum Cleaner 'Kreng' on the job",
+          "sourceUrl": "https://www.flickr.com/photos/52365139@N05/8499549941",
+          "originalUrl": "https://live.staticflickr.com/8508/8499549941_717873b9cd_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/8b92f6ce-c413-40d7-b687-d6496c0b4f49/thumb/",
+          "creator": {
+            "name": "dvanzuijlekom",
+            "profileUrl": "https://www.flickr.com/photos/52365139@N05"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/8b92f6ce-c413-40d7-b687-d6496c0b4f49.img",
+          "bytes": 46639,
+          "sha256": "936500f36a7c8df967a6e04295cb4f2e1b4e122b57d4314d3fc0773cb7ff0afe",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "7f605bb0-49f0-4ed5-99db-902cce4db47a",
+          "providerRank": 4,
+          "title": "Robot vacuum cleaners - CES 2011 - Consumer Electronics Show - Las Vegas, NV",
+          "sourceUrl": "https://www.flickr.com/photos/25897810@N00/5343742497",
+          "originalUrl": "https://live.staticflickr.com/5125/5343742497_3747c9b933_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/7f605bb0-49f0-4ed5-99db-902cce4db47a/thumb/",
+          "creator": {
+            "name": "David Berkowitz",
+            "profileUrl": "https://www.flickr.com/photos/25897810@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/7f605bb0-49f0-4ed5-99db-902cce4db47a.img",
+          "bytes": 42834,
+          "sha256": "5e4ae7c98f688d82f4f870bc53a56aec121b6078119b42cc758d521404a690e1",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "1f48a5bb-4785-40f4-bbe6-164a1ece2d5a",
+          "providerRank": 5,
+          "title": "Miele robot vacuum, IFA 2015",
+          "sourceUrl": "https://www.flickr.com/photos/65265630@N03/20591412974",
+          "originalUrl": "https://live.staticflickr.com/5764/20591412974_85b561a50c_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/1f48a5bb-4785-40f4-bbe6-164a1ece2d5a/thumb/",
+          "creator": {
+            "name": "Janitors",
+            "profileUrl": "https://www.flickr.com/photos/65265630@N03"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/1f48a5bb-4785-40f4-bbe6-164a1ece2d5a.img",
+          "bytes": 31519,
+          "sha256": "4bed3320e4b914a3f9a9dac48106abf91e2213d207566c82595a83dab4c26a84",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "9767c601-87a1-437c-9ceb-66ba93fe51c1",
+          "providerRank": 6,
+          "title": "LG has traded booth babes for dancing robot vacuum cleaners. They disrupted two industries at once.",
+          "sourceUrl": "https://www.flickr.com/photos/25897810@N00/8362007749",
+          "originalUrl": "https://live.staticflickr.com/8195/8362007749_f9e1dca86e.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/9767c601-87a1-437c-9ceb-66ba93fe51c1/thumb/",
+          "creator": {
+            "name": "David Berkowitz",
+            "profileUrl": "https://www.flickr.com/photos/25897810@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/9767c601-87a1-437c-9ceb-66ba93fe51c1.img",
+          "bytes": 16440,
+          "sha256": "75ccea4dbae60ca05633ea3af5ecdff0b0a5d5f831e56c61e30594ecbf54978d",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "d8634cd0-9cc0-4cfc-a3e7-91bd9c998452",
+          "providerRank": 7,
+          "title": "apparently Prrrmbah is home to a lots of cats riding robotic vacuums?",
+          "sourceUrl": "https://www.flickr.com/photos/70285332@N00/15679016929",
+          "originalUrl": "https://live.staticflickr.com/8587/15679016929_3b1bb56132_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/d8634cd0-9cc0-4cfc-a3e7-91bd9c998452/thumb/",
+          "creator": {
+            "name": "▓▒░ TORLEY ░▒▓",
+            "profileUrl": "https://www.flickr.com/photos/70285332@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/d8634cd0-9cc0-4cfc-a3e7-91bd9c998452.img",
+          "bytes": 23736,
+          "sha256": "c9a9c5d4cf65738d602ce8ca7311a7e57795d1276ea186019ae29fc805f28532",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "2c67cfeb-36a6-4acc-ae09-1e516a74dd34",
+          "providerRank": 8,
+          "title": "I WAS HOPING THAT THIS WOULD FOLLOW ME HOME [Samsung Robot Vacuum] REF-103604",
+          "sourceUrl": "https://www.flickr.com/photos/80824546@N00/17179073601",
+          "originalUrl": "https://live.staticflickr.com/7655/17179073601_cafcb14d64_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/2c67cfeb-36a6-4acc-ae09-1e516a74dd34/thumb/",
+          "creator": {
+            "name": "infomatique",
+            "profileUrl": "https://www.flickr.com/photos/80824546@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/2c67cfeb-36a6-4acc-ae09-1e516a74dd34.img",
+          "bytes": 35155,
+          "sha256": "d00ea3342718ddb263ac3b8445011f0905dfd64fc4e28f2d8190b9bdaab46534",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "fd168475-031d-494c-bef2-0be192d46501",
+          "providerRank": 9,
+          "title": "I WAS HOPING THAT THIS WOULD FOLLOW ME HOME [Samsung Robot Vacuum] REF-103607",
+          "sourceUrl": "https://www.flickr.com/photos/80824546@N00/16557248294",
+          "originalUrl": "https://live.staticflickr.com/7710/16557248294_22f88c25e3_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/fd168475-031d-494c-bef2-0be192d46501/thumb/",
+          "creator": {
+            "name": "infomatique",
+            "profileUrl": "https://www.flickr.com/photos/80824546@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/fd168475-031d-494c-bef2-0be192d46501.img",
+          "bytes": 19895,
+          "sha256": "91dd7b53a0f58980b69defc6109e95da7e98b591986d820157632a372f038f2f",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "943bc1dd-c96c-4fd7-8a09-d57b7f902a35",
+          "providerRank": 10,
+          "title": "Robot vacuum cleaner_6",
+          "sourceUrl": "https://www.flickr.com/photos/56688984@N06/11399418234",
+          "originalUrl": "https://live.staticflickr.com/5502/11399418234_5768b085aa_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/943bc1dd-c96c-4fd7-8a09-d57b7f902a35/thumb/",
+          "creator": {
+            "name": "kohrogi34",
+            "profileUrl": "https://www.flickr.com/photos/56688984@N06"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/943bc1dd-c96c-4fd7-8a09-d57b7f902a35.img",
+          "bytes": 24687,
+          "sha256": "dac36bb0f88608c78729e734432f6c82517fc231bb3d303ec8d5d0599e8aa24c",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "ad15e9fd-106a-4be2-bcab-c3bf9c55061b",
+          "providerRank": 11,
+          "title": "I WAS HOPING THAT THIS WOULD FOLLOW ME HOME [Samsung Robot Vacuum] REF-103606",
+          "sourceUrl": "https://www.flickr.com/photos/80824546@N00/16991922128",
+          "originalUrl": "https://live.staticflickr.com/7598/16991922128_775927eed0_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/ad15e9fd-106a-4be2-bcab-c3bf9c55061b/thumb/",
+          "creator": {
+            "name": "infomatique",
+            "profileUrl": "https://www.flickr.com/photos/80824546@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/ad15e9fd-106a-4be2-bcab-c3bf9c55061b.img",
+          "bytes": 29815,
+          "sha256": "6f13b34c01f7d7ee1586e1f7b102891b4f26d4c8fa600699c3983c5eab137067",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "9b99b390-a5ce-45f5-8229-09217090a5e6",
+          "providerRank": 12,
+          "title": "Robot vacuum cleaner",
+          "sourceUrl": "https://www.flickr.com/photos/56688984@N06/11399420514",
+          "originalUrl": "https://live.staticflickr.com/2863/11399420514_b2fa4c0e45_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/9b99b390-a5ce-45f5-8229-09217090a5e6/thumb/",
+          "creator": {
+            "name": "kohrogi34",
+            "profileUrl": "https://www.flickr.com/photos/56688984@N06"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/9b99b390-a5ce-45f5-8229-09217090a5e6.img",
+          "bytes": 15379,
+          "sha256": "80ba092e664745a99c782ab18cfbd011a0a66ff4873722bc377e02154bb26e28",
+          "mime": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "id": "person",
+      "providerQuery": "laptop working",
+      "ru": "владелец малого бизнеса работает за ноутбуком",
+      "en": "small business owner working at a laptop",
+      "requestUrl": "https://api.openverse.org/v1/images/?q=laptop+working&page_size=12&license_type=commercial%2Cmodification",
+      "status": 200,
+      "resultCount": 240,
+      "rawResponseSha256": "bf10b1bdb5f0678bf785fb31d3cb41e499c1d759653b41b2c7e4300f968c4163",
+      "candidates": [
+        {
+          "id": "7447f84a-6b6d-45db-8d2b-fe88c3d13616",
+          "providerRank": 1,
+          "title": "apple-desk-laptop-working",
+          "sourceUrl": "https://www.flickr.com/photos/137643065@N06/23698803763",
+          "originalUrl": "https://live.staticflickr.com/1658/23698803763_8e5c944c11_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/7447f84a-6b6d-45db-8d2b-fe88c3d13616/thumb/",
+          "creator": {
+            "name": "pixellaphoto",
+            "profileUrl": "https://www.flickr.com/photos/137643065@N06"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/7447f84a-6b6d-45db-8d2b-fe88c3d13616.img",
+          "bytes": 15607,
+          "sha256": "23f5ec9564a5881d5c20145a4b94cf95fc9f511562ed25888f1043775e8b062c",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "3e34d0df-0791-443f-a567-2bca625325ed",
+          "providerRank": 2,
+          "title": "Technician with laptop working on server rack at NERSC",
+          "sourceUrl": "https://www.flickr.com/photos/29507259@N02/6271158853",
+          "originalUrl": "https://live.staticflickr.com/6222/6271158853_aa7dc9d416_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/3e34d0df-0791-443f-a567-2bca625325ed/thumb/",
+          "creator": {
+            "name": "D Coetzee",
+            "profileUrl": "https://www.flickr.com/photos/29507259@N02"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/3e34d0df-0791-443f-a567-2bca625325ed.img",
+          "bytes": 40502,
+          "sha256": "d224bcf195cfc500b758f5123d97acf0dd5ba97532a80d3f86d036fd978b7790",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "562a68b5-78dd-4b56-89b0-67901583d0eb",
+          "providerRank": 3,
+          "title": "desk-laptop-working-technology",
+          "sourceUrl": "https://www.flickr.com/photos/137643065@N06/24299511976",
+          "originalUrl": "https://live.staticflickr.com/1616/24299511976_5b83a03b97_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/562a68b5-78dd-4b56-89b0-67901583d0eb/thumb/",
+          "creator": {
+            "name": "pixellaphoto",
+            "profileUrl": "https://www.flickr.com/photos/137643065@N06"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/562a68b5-78dd-4b56-89b0-67901583d0eb.img",
+          "bytes": 26426,
+          "sha256": "630018063ca19a420115c63ab23f4efe3719cb43823ea558710e4968b979436a",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "cbfc1627-8f04-4752-af05-3c4db101a011",
+          "providerRank": 4,
+          "title": "laptop work today",
+          "sourceUrl": "https://www.flickr.com/photos/82101433@N00/405936607",
+          "originalUrl": "https://live.staticflickr.com/172/405936607_0530145e30_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/cbfc1627-8f04-4752-af05-3c4db101a011/thumb/",
+          "creator": {
+            "name": "dgthekneelo",
+            "profileUrl": "https://www.flickr.com/photos/82101433@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/cbfc1627-8f04-4752-af05-3c4db101a011.img",
+          "bytes": 34900,
+          "sha256": "21e4aa5893539ef9178b624fb9302c5ae24deb88c4f17f255a78e54645465020",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "6adcab40-54a1-4192-ada8-96968da73762",
+          "providerRank": 5,
+          "title": "Laptop Working",
+          "sourceUrl": "https://stocksnap.io/photo/laptop-working-DOLNAISHLZ",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/DOLNAISHLZ.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/6adcab40-54a1-4192-ada8-96968da73762/thumb/",
+          "creator": {
+            "name": "Burst",
+            "profileUrl": "https://burst.shopify.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/6adcab40-54a1-4192-ada8-96968da73762.img",
+          "bytes": 20587,
+          "sha256": "ecd4ce34e31a608e53c62bca0b28450271887fc073346eb480d59c87a2d1c80d",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "2d1ccdc0-d360-4878-9e0e-d7218272448e",
+          "providerRank": 6,
+          "title": "Laptop Work",
+          "sourceUrl": "https://stocksnap.io/photo/laptop-work-ABBPKYTMY5",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/ABBPKYTMY5.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/2d1ccdc0-d360-4878-9e0e-d7218272448e/thumb/",
+          "creator": {
+            "name": "Matt Moloney",
+            "profileUrl": "https://mjmolo.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/2d1ccdc0-d360-4878-9e0e-d7218272448e.img",
+          "bytes": 34403,
+          "sha256": "340452f38cc6f2df561650a12c97363b28c6d4e7d8f34e74c8561600217ac168",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "5ba8a45a-a095-4c48-9223-2d98b20aa49c",
+          "providerRank": 7,
+          "title": "Laptop, working outside, freelance",
+          "sourceUrl": "https://www.flickr.com/photos/36076466@N08/28048790010",
+          "originalUrl": "https://live.staticflickr.com/7292/28048790010_de6da39d29_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/5ba8a45a-a095-4c48-9223-2d98b20aa49c/thumb/",
+          "creator": {
+            "name": "Epicantus",
+            "profileUrl": "https://www.flickr.com/photos/36076466@N08"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/5ba8a45a-a095-4c48-9223-2d98b20aa49c.img",
+          "bytes": 28668,
+          "sha256": "cf21ab7ef06fa1d5374d15ccfcb36f7d81efef4e223a7ea7ac664daa9a751433",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "67682b9c-035e-4aae-a182-d4cdbd297cfa",
+          "providerRank": 8,
+          "title": "Laptop Work",
+          "sourceUrl": "https://stocksnap.io/photo/laptop-work-Z0GFSWC2Y0",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/Z0GFSWC2Y0.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/67682b9c-035e-4aae-a182-d4cdbd297cfa/thumb/",
+          "creator": {
+            "name": "Matt Moloney",
+            "profileUrl": "https://mjmolo.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/67682b9c-035e-4aae-a182-d4cdbd297cfa.img",
+          "bytes": 21675,
+          "sha256": "0cb0017f74c8b3ddefa2034f04b137c0b7cc6624eede0ec6b6a674ca798ebd7e",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "d52cdd7d-cfd6-4706-b0e5-561ecce21ae3",
+          "providerRank": 9,
+          "title": "this is my first non-laptop work computer in about 5 years.",
+          "sourceUrl": "https://www.flickr.com/photos/35237095805@N01/5940840416",
+          "originalUrl": "https://live.staticflickr.com/6020/5940840416_080c0c7743.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/d52cdd7d-cfd6-4706-b0e5-561ecce21ae3/thumb/",
+          "creator": {
+            "name": "Al Abut",
+            "profileUrl": "https://www.flickr.com/photos/35237095805@N01"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/d52cdd7d-cfd6-4706-b0e5-561ecce21ae3.img",
+          "bytes": 29512,
+          "sha256": "61ae34ebc804070ca14e92cd30ce154997767b720a6f3af682e67e27397808b9",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "f5f23387-48e0-446e-b249-7cb1e347043e",
+          "providerRank": 10,
+          "title": "Laptop Working",
+          "sourceUrl": "https://stocksnap.io/photo/laptop-working-HB4IJY3TPI",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/HB4IJY3TPI.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/f5f23387-48e0-446e-b249-7cb1e347043e/thumb/",
+          "creator": {
+            "name": "Matt Moloney",
+            "profileUrl": "https://mjmolo.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/f5f23387-48e0-446e-b249-7cb1e347043e.img",
+          "bytes": 23754,
+          "sha256": "0f9afe8c76fbe08b2aa9c64cfed6efb699f142044d5c604ae52866ab30797023",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "8f40cddf-7969-4a8b-967e-b9bebfbac3af",
+          "providerRank": 11,
+          "title": "Laptop Working",
+          "sourceUrl": "https://stocksnap.io/photo/laptop-working-8GETAUWFBE",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/8GETAUWFBE.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/8f40cddf-7969-4a8b-967e-b9bebfbac3af/thumb/",
+          "creator": {
+            "name": "Matt Moloney",
+            "profileUrl": "https://mjmolo.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/8f40cddf-7969-4a8b-967e-b9bebfbac3af.img",
+          "bytes": 32108,
+          "sha256": "be39f5d7609dc1fb6ea777e0490fdf03bf453174870ee92e570cfb5de0cc35f4",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "f2404dc5-11f9-4ad4-bead-b29407064887",
+          "providerRank": 12,
+          "title": "Laptop work area in Salt Lake City for Delta Airlines",
+          "sourceUrl": "https://www.flickr.com/photos/31442459@N00/3920414406",
+          "originalUrl": "https://live.staticflickr.com/2426/3920414406_4d484d8385.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/f2404dc5-11f9-4ad4-bead-b29407064887/thumb/",
+          "creator": {
+            "name": "Wesley Fryer",
+            "profileUrl": "https://www.flickr.com/photos/31442459@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/f2404dc5-11f9-4ad4-bead-b29407064887.img",
+          "bytes": 30289,
+          "sha256": "33c7b5e233d9cca0668b61b7e419ee1c187d5863816fc71f94d268e86e187a64",
+          "mime": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "id": "horizontal",
+      "providerQuery": "team meeting",
+      "ru": "команда обсуждает проект в офисе",
+      "en": "team discussing a project in an office",
+      "requestUrl": "https://api.openverse.org/v1/images/?q=team+meeting&page_size=12&license_type=commercial%2Cmodification",
+      "status": 200,
+      "resultCount": 240,
+      "rawResponseSha256": "55e8bfc22f51b69f52d2ff393bcd60174b2717771e776b5e4d6a51a6098b1116",
+      "candidates": [
+        {
+          "id": "98013261-c898-4a07-a80f-7a8aba7982e5",
+          "providerRank": 1,
+          "title": "Liip team meeting",
+          "sourceUrl": "https://www.flickr.com/photos/21458229@N00/2800660239",
+          "originalUrl": "https://live.staticflickr.com/3172/2800660239_608ea2a18d_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/98013261-c898-4a07-a80f-7a8aba7982e5/thumb/",
+          "creator": {
+            "name": "lejoe",
+            "profileUrl": "https://www.flickr.com/photos/21458229@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/98013261-c898-4a07-a80f-7a8aba7982e5.img",
+          "bytes": 45023,
+          "sha256": "48bc4a2145d0a2c3a0b4f1e88e776fce372fd22e803ae826698e6b3c7dc7f8bc",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "2647f71f-f5eb-4145-8e3f-22804aa86531",
+          "providerRank": 2,
+          "title": "team meeting",
+          "sourceUrl": "https://www.flickr.com/photos/73645804@N00/9111274504",
+          "originalUrl": "https://live.staticflickr.com/2868/9111274504_a36b31d24d_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/2647f71f-f5eb-4145-8e3f-22804aa86531/thumb/",
+          "creator": {
+            "name": "woodleywonderworks",
+            "profileUrl": "https://www.flickr.com/photos/73645804@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/2647f71f-f5eb-4145-8e3f-22804aa86531.img",
+          "bytes": 29150,
+          "sha256": "80a754509869b25dcd90706a38e0a0e64a6876a6880451ee2f08923092ecf2b7",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "d81aeb0a-41d4-4e92-b469-0c45f1bdac84",
+          "providerRank": 3,
+          "title": "Team Meeting [Bars] 3/3/12",
+          "sourceUrl": "https://www.flickr.com/photos/12286015@N06/6980067103",
+          "originalUrl": "https://live.staticflickr.com/7180/6980067103_7e487737a5_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/d81aeb0a-41d4-4e92-b469-0c45f1bdac84/thumb/",
+          "creator": {
+            "name": "Erin Costa",
+            "profileUrl": "https://www.flickr.com/photos/12286015@N06"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/d81aeb0a-41d4-4e92-b469-0c45f1bdac84.img",
+          "bytes": 86395,
+          "sha256": "91a6d3aa14e5df53c0dda56538bebe7a6bbc1eaba8fb364090219eb36267fc90",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "60d07cfc-45e4-4416-9737-4a446f33bec0",
+          "providerRank": 4,
+          "title": "Team Meeting",
+          "sourceUrl": "https://stocksnap.io/photo/team-meeting-VQXYE2ZEHC",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/VQXYE2ZEHC.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/60d07cfc-45e4-4416-9737-4a446f33bec0/thumb/",
+          "creator": {
+            "name": "Startup Stock Photos",
+            "profileUrl": "https://startupstockphotos.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/60d07cfc-45e4-4416-9737-4a446f33bec0.img",
+          "bytes": 32366,
+          "sha256": "66c29b5ba7154cb7583b4605b852223b403aeb4ae2eae89d75b46c10f26eed3a",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "be224b0f-9817-49e7-8402-8198f7f4e126",
+          "providerRank": 5,
+          "title": "Team Meeting",
+          "sourceUrl": "https://stocksnap.io/photo/team-meeting-JBW2PXDOL6",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/JBW2PXDOL6.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/be224b0f-9817-49e7-8402-8198f7f4e126/thumb/",
+          "creator": {
+            "name": "Startup Stock Photos",
+            "profileUrl": "https://startupstockphotos.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/be224b0f-9817-49e7-8402-8198f7f4e126.img",
+          "bytes": 33065,
+          "sha256": "0dff7a023cc50136941a29ce96eb32fb1603b1059e10ced1386e1355bd73d1c9",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "99aae217-9652-497a-8a24-f9d05b459cae",
+          "providerRank": 6,
+          "title": "Team Meeting",
+          "sourceUrl": "https://stocksnap.io/photo/team-meeting-69TMH4ITIE",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/69TMH4ITIE.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/99aae217-9652-497a-8a24-f9d05b459cae/thumb/",
+          "creator": {
+            "name": "Startup Stock Photos",
+            "profileUrl": "https://startupstockphotos.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/99aae217-9652-497a-8a24-f9d05b459cae.img",
+          "bytes": 33763,
+          "sha256": "7d1f348ddfa0e3959510a18b73b76190578e6078de8f97f5e5ef6cdd60544510",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "a61383c7-00cb-4333-a2c8-f8fcc138222e",
+          "providerRank": 7,
+          "title": "Cultural Support Team meets with local shop owners [Image 8 of 8]",
+          "sourceUrl": "https://www.flickr.com/photos/28650594@N03/5661631847",
+          "originalUrl": "https://live.staticflickr.com/5023/5661631847_275cff5997_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/a61383c7-00cb-4333-a2c8-f8fcc138222e/thumb/",
+          "creator": {
+            "name": "DVIDSHUB",
+            "profileUrl": "https://www.flickr.com/photos/28650594@N03"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/a61383c7-00cb-4333-a2c8-f8fcc138222e.img",
+          "bytes": 29223,
+          "sha256": "e9a01a6a43a81626d6541f0fec4c9f7b686b5faffc5ca02cecd9039f4c4c65d9",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "47a7eabb-60b1-41ed-ae63-43211b4e07f8",
+          "providerRank": 8,
+          "title": "Team Meeting",
+          "sourceUrl": "https://stocksnap.io/photo/team-meeting-84GOP2OAKR",
+          "originalUrl": "https://cdn.stocksnap.io/img-thumbs/960w/84GOP2OAKR.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/47a7eabb-60b1-41ed-ae63-43211b4e07f8/thumb/",
+          "creator": {
+            "name": "Startup Stock Photos",
+            "profileUrl": "https://startupstockphotos.com"
+          },
+          "license": {
+            "name": "cc0",
+            "version": "1.0",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "stocksnap",
+          "file": "images/47a7eabb-60b1-41ed-ae63-43211b4e07f8.img",
+          "bytes": 23307,
+          "sha256": "3df0dd968c1d81f32f910926e5176656c68304da2d9f3da946f2398ad5ebc9bb",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "73e04e43-5c30-41f2-b1f3-bdf8200e7695",
+          "providerRank": 9,
+          "title": "TWU Gymnastics - Team Meeting",
+          "sourceUrl": "https://www.flickr.com/photos/12286015@N06/5412228562",
+          "originalUrl": "https://live.staticflickr.com/5297/5412228562_a6de95272f_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/73e04e43-5c30-41f2-b1f3-bdf8200e7695/thumb/",
+          "creator": {
+            "name": "Erin Costa",
+            "profileUrl": "https://www.flickr.com/photos/12286015@N06"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/73e04e43-5c30-41f2-b1f3-bdf8200e7695.img",
+          "bytes": 56663,
+          "sha256": "48213f36ba65591cabbdf93b2c0f62297f1807ca49629a8ac4bca2a324500e7e",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "b85faa62-cf30-404b-aecf-4180401ddc5b",
+          "providerRank": 10,
+          "title": "Cultural Support Team meets with local shop owners [Image 4 of 8]",
+          "sourceUrl": "https://www.flickr.com/photos/28650594@N03/5661625753",
+          "originalUrl": "https://live.staticflickr.com/5184/5661625753_b7cf8df3c6_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/b85faa62-cf30-404b-aecf-4180401ddc5b/thumb/",
+          "creator": {
+            "name": "DVIDSHUB",
+            "profileUrl": "https://www.flickr.com/photos/28650594@N03"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/b85faa62-cf30-404b-aecf-4180401ddc5b.img",
+          "bytes": 30398,
+          "sha256": "d4568bbe44ebcbe2e7985cb2306ebd081e69c9ece7919876ff9c1184f7cb65ca",
+          "mime": "image/webp"
+        },
+        {
+          "id": "a82533c5-1400-45d3-86f0-5ad7a7306bdd",
+          "providerRank": 11,
+          "title": "INDEX: Documentation Team Meeting",
+          "sourceUrl": "https://www.flickr.com/photos/47854931@N00/43231056",
+          "originalUrl": "https://live.staticflickr.com/25/43231056_a7e9c6938d_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/a82533c5-1400-45d3-86f0-5ad7a7306bdd/thumb/",
+          "creator": {
+            "name": "@boetter",
+            "profileUrl": "https://www.flickr.com/photos/47854931@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/a82533c5-1400-45d3-86f0-5ad7a7306bdd.img",
+          "bytes": 44776,
+          "sha256": "4c6c3c9a6d491306b14f99c0c0598b24352f7cce10a0600cf43a29cf0bf5b91f",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "e8e99c76-2b91-474e-872c-adabae492c48",
+          "providerRank": 12,
+          "title": "Betterworks team meeting",
+          "sourceUrl": "https://www.flickr.com/photos/61166346@N06/6244763561",
+          "originalUrl": "https://live.staticflickr.com/6212/6244763561_9293101f84_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/e8e99c76-2b91-474e-872c-adabae492c48/thumb/",
+          "creator": {
+            "name": "BetterWorks",
+            "profileUrl": "https://www.flickr.com/photos/61166346@N06"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/e8e99c76-2b91-474e-872c-adabae492c48.img",
+          "bytes": 50692,
+          "sha256": "c546c3c03dfbf5a7eb96914f3f8ef5fd802a97cfcc3323e06025d5adc770b0c1",
+          "mime": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "id": "no-people",
+      "providerQuery": "server rack",
+      "ru": "серверная стойка с мигающими индикаторами без людей",
+      "en": "server rack with blinking indicator lights and no people",
+      "requestUrl": "https://api.openverse.org/v1/images/?q=server+rack&page_size=12&license_type=commercial%2Cmodification",
+      "status": 200,
+      "resultCount": 240,
+      "rawResponseSha256": "3fdd3160c734c998c3999e4a3aaf7caf4b74b19f6b94e5c219e84a0bf06c136c",
+      "candidates": [
+        {
+          "id": "c4e920a7-f761-442f-ae51-d380c8fa26d5",
+          "providerRank": 1,
+          "title": "Server rack",
+          "sourceUrl": "https://www.flickr.com/photos/24567257@N05/3354592412",
+          "originalUrl": "https://live.staticflickr.com/3636/3354592412_b436858c55_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/c4e920a7-f761-442f-ae51-d380c8fa26d5/thumb/",
+          "creator": {
+            "name": "towo™",
+            "profileUrl": "https://www.flickr.com/photos/24567257@N05"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/c4e920a7-f761-442f-ae51-d380c8fa26d5.img",
+          "bytes": 116082,
+          "sha256": "43e4b91080d9da36f07b9c8e7a4a5748889727240d116b820754ce2fb433572a",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "c28b5999-ea14-4b83-ace1-aa2e496803a7",
+          "providerRank": 2,
+          "title": "Server Rack in the Laundry Room",
+          "sourceUrl": "https://www.flickr.com/photos/75783104@N00/65675213",
+          "originalUrl": "https://live.staticflickr.com/24/65675213_de819df88d_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/c28b5999-ea14-4b83-ace1-aa2e496803a7/thumb/",
+          "creator": {
+            "name": "zdw",
+            "profileUrl": "https://www.flickr.com/photos/75783104@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/c28b5999-ea14-4b83-ace1-aa2e496803a7.img",
+          "bytes": 36160,
+          "sha256": "9e60f8872b802b43fc2c12992d08378a600ff1977f073c475d48e399a64ec014",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "a803af62-8bff-4fd0-b034-e8b85db849f0",
+          "providerRank": 3,
+          "title": "Google early server rack",
+          "sourceUrl": "https://www.flickr.com/photos/41664750@N00/2437695125",
+          "originalUrl": "https://live.staticflickr.com/2393/2437695125_05339153b5_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/a803af62-8bff-4fd0-b034-e8b85db849f0/thumb/",
+          "creator": {
+            "name": "leokoivulehto",
+            "profileUrl": "https://www.flickr.com/photos/41664750@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/a803af62-8bff-4fd0-b034-e8b85db849f0.img",
+          "bytes": 72575,
+          "sha256": "b478555ae4b379040c9439243e4c09221f3a230a617a95a795b837b526381424",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "cc1c5aeb-587e-4421-9ac7-16dea8f2a24b",
+          "providerRank": 4,
+          "title": "My server rack.",
+          "sourceUrl": "https://www.flickr.com/photos/64891221@N00/5224923745",
+          "originalUrl": "https://live.staticflickr.com/5249/5224923745_236850d058.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/cc1c5aeb-587e-4421-9ac7-16dea8f2a24b/thumb/",
+          "creator": {
+            "name": "mikeshelby",
+            "profileUrl": "https://www.flickr.com/photos/64891221@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/cc1c5aeb-587e-4421-9ac7-16dea8f2a24b.img",
+          "bytes": 45918,
+          "sha256": "5bc94e012f57fd01dc4465aa5212509d03dd7089351b433b856012a229bc453e",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "46feb009-41da-4b27-862a-7d2114c8d7b0",
+          "providerRank": 5,
+          "title": "Early Google server rack",
+          "sourceUrl": "https://www.flickr.com/photos/56553246@N00/173567346",
+          "originalUrl": "https://live.staticflickr.com/62/173567346_13a4163918_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/46feb009-41da-4b27-862a-7d2114c8d7b0/thumb/",
+          "creator": {
+            "name": "Steve Parker",
+            "profileUrl": "https://www.flickr.com/photos/56553246@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/46feb009-41da-4b27-862a-7d2114c8d7b0.img",
+          "bytes": 72105,
+          "sha256": "1ea509bb30ed48c52968bd36c4e3c9961fb4727ec9aacde9ea4e1726236f5ff6",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "37f5f00e-1db3-4864-a3b0-470f5f63eca0",
+          "providerRank": 6,
+          "title": "Server Rack!!!",
+          "sourceUrl": "https://www.flickr.com/photos/73292596@N00/11142912",
+          "originalUrl": "https://live.staticflickr.com/8/11142912_a2fac0dd78_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/37f5f00e-1db3-4864-a3b0-470f5f63eca0/thumb/",
+          "creator": {
+            "name": "im4t00l",
+            "profileUrl": "https://www.flickr.com/photos/73292596@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/37f5f00e-1db3-4864-a3b0-470f5f63eca0.img",
+          "bytes": 46944,
+          "sha256": "eaf238ee1bc539b138f1e9ce2d41950dc75306bddb86235ed087da1210a70ac6",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "678a1607-46c9-43fc-976b-d5a35ab99ecd",
+          "providerRank": 7,
+          "title": "Binero Gingerbread server rack 20091214",
+          "sourceUrl": "https://www.flickr.com/photos/13868299@N02/4184481490",
+          "originalUrl": "https://live.staticflickr.com/2525/4184481490_31a505ca68.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/678a1607-46c9-43fc-976b-d5a35ab99ecd/thumb/",
+          "creator": {
+            "name": "binero",
+            "profileUrl": "https://www.flickr.com/photos/13868299@N02"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/678a1607-46c9-43fc-976b-d5a35ab99ecd.img",
+          "bytes": 29704,
+          "sha256": "6f04937be400f0f76b97bebb2ddc7a6aaf3c13909362b0fec8d17d7870ff94c2",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "3584c562-6519-4e5a-b24b-25601ec6f6f2",
+          "providerRank": 8,
+          "title": "Luminous server racks and guy with a tie, Web 2.0 Expo, Berlin, Germany.JPG",
+          "sourceUrl": "https://www.flickr.com/photos/37996580417@N01/1923410058",
+          "originalUrl": "https://live.staticflickr.com/2341/1923410058_19aa4f9e39_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/3584c562-6519-4e5a-b24b-25601ec6f6f2/thumb/",
+          "creator": {
+            "name": "gruntzooki",
+            "profileUrl": "https://www.flickr.com/photos/37996580417@N01"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/3584c562-6519-4e5a-b24b-25601ec6f6f2.img",
+          "bytes": 54700,
+          "sha256": "6d9e74c5bea410f8afc866cd4133d108eb59821f9aa536b211f78b08a6f21d24",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "92991656-7d8d-4de4-90e6-51241ad16107",
+          "providerRank": 9,
+          "title": "Server rack stand up desk, front view",
+          "sourceUrl": "https://www.flickr.com/photos/41894170584@N01/6313081715",
+          "originalUrl": "https://live.staticflickr.com/6053/6313081715_62a2958564_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/92991656-7d8d-4de4-90e6-51241ad16107/thumb/",
+          "creator": {
+            "name": "rexhammock",
+            "profileUrl": "https://www.flickr.com/photos/41894170584@N01"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/92991656-7d8d-4de4-90e6-51241ad16107.img",
+          "bytes": 56349,
+          "sha256": "fa5dff2cd8613fd7b3f07174d974886c99f495ed67280e0b8137595f8cff353c",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "20f7a228-b961-4a42-9ee3-1f88b0f7422f",
+          "providerRank": 10,
+          "title": "Home Server Rack",
+          "sourceUrl": "https://www.flickr.com/photos/19813272@N00/2556912836",
+          "originalUrl": "https://live.staticflickr.com/3156/2556912836_60ac6e817f_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/20f7a228-b961-4a42-9ee3-1f88b0f7422f/thumb/",
+          "creator": {
+            "name": "mray",
+            "profileUrl": "https://www.flickr.com/photos/19813272@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/20f7a228-b961-4a42-9ee3-1f88b0f7422f.img",
+          "bytes": 35052,
+          "sha256": "da9bd1d108f8c0b2a41b77f4bc46ffb80ba1e8478b7c92f34edfadb572548c89",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "2ab98317-242d-4f7c-8794-6eb30cb583d8",
+          "providerRank": 11,
+          "title": "Element with server rack",
+          "sourceUrl": "https://www.flickr.com/photos/60704492@N00/4435303947",
+          "originalUrl": "https://live.staticflickr.com/4018/4435303947_92f134eae9_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/2ab98317-242d-4f7c-8794-6eb30cb583d8/thumb/",
+          "creator": {
+            "name": "The_Gut",
+            "profileUrl": "https://www.flickr.com/photos/60704492@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/2ab98317-242d-4f7c-8794-6eb30cb583d8.img",
+          "bytes": 52488,
+          "sha256": "0d5e673c6fa9f1b19bbeb7a94e8729f68b0e1b2182a703864c73dd052705a537",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "747bb2d9-eb7c-41a9-bc3f-e83aa588ea68",
+          "providerRank": 12,
+          "title": "The server rack",
+          "sourceUrl": "https://www.flickr.com/photos/95123580@N00/449943669",
+          "originalUrl": "https://live.staticflickr.com/206/449943669_66695c5673.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/747bb2d9-eb7c-41a9-bc3f-e83aa588ea68/thumb/",
+          "creator": {
+            "name": "pjmorse",
+            "profileUrl": "https://www.flickr.com/photos/95123580@N00"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by-sa/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/747bb2d9-eb7c-41a9-bc3f-e83aa588ea68.img",
+          "bytes": 31863,
+          "sha256": "b7d4c8383e9ec73e5a5f221050e07dab5bc06e3d93f81002a09be09410b12dfc",
+          "mime": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "id": "abstract",
+      "providerQuery": "business automation",
+      "ru": "рост бизнеса благодаря автоматизации рутинных процессов",
+      "en": "business growth through automation of routine processes",
+      "requestUrl": "https://api.openverse.org/v1/images/?q=business+automation&page_size=12&license_type=commercial%2Cmodification",
+      "status": 200,
+      "resultCount": 240,
+      "rawResponseSha256": "705f2e3847c60c1a8043f822bb72228c7a16b15252b5b09a2ef3a25e0163008a",
+      "candidates": [
+        {
+          "id": "ee34fee1-d7b4-417e-b110-e2a8ad773043",
+          "providerRank": 1,
+          "title": "ERP for Energy Sector business automation",
+          "sourceUrl": "https://commons.wikimedia.org/w/index.php?curid=191192566",
+          "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/7/70/ERP_for_Energy_Sector_business_automation.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+          "previewUrl": "https://api.openverse.org/v1/images/ee34fee1-d7b4-417e-b110-e2a8ad773043/thumb/",
+          "creator": {
+            "name": "Serpent Consult",
+            "profileUrl": null
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "4.0",
+            "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "wikimedia",
+          "excludedReason": "HTTPError: HTTP Error 424: Failed Dependency"
+        },
+        {
+          "id": "cd872673-c553-4bac-b69c-473af3f74be0",
+          "providerRank": 2,
+          "title": "Business Automation Ltd",
+          "sourceUrl": "https://commons.wikimedia.org/w/index.php?curid=149109331",
+          "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/d/d1/Business_Automation_Ltd.png",
+          "previewUrl": "https://api.openverse.org/v1/images/cd872673-c553-4bac-b69c-473af3f74be0/thumb/",
+          "creator": {
+            "name": "Shafiunmiraz",
+            "profileUrl": "https://commons.wikimedia.org/w/index.php?title=User:Shafiunmiraz&action=edit&redlink=1"
+          },
+          "license": {
+            "name": "by-sa",
+            "version": "4.0",
+            "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "wikimedia",
+          "excludedReason": "HTTPError: HTTP Error 424: Failed Dependency"
+        },
+        {
+          "id": "9553dad4-41fc-444a-9a14-3703d314ce22",
+          "providerRank": 3,
+          "title": "MainStreet Opportunity – AI Automation Ad for Small Business Automation",
+          "sourceUrl": "https://commons.wikimedia.org/w/index.php?curid=170821127",
+          "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/8/8a/MainStreet_Opportunity_%E2%80%93_AI_Automation_Ad_for_Small_Business_Automation.png",
+          "previewUrl": "https://api.openverse.org/v1/images/9553dad4-41fc-444a-9a14-3703d314ce22/thumb/",
+          "creator": {
+            "name": "MainStreet Opportinity",
+            "profileUrl": "https://commons.wikimedia.org/w/index.php?title=User:MainStreet_Opportinity&action=edit&redlink=1"
+          },
+          "license": {
+            "name": "by",
+            "version": "4.0",
+            "url": "https://creativecommons.org/licenses/by/4.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "wikimedia",
+          "excludedReason": "HTTPError: HTTP Error 424: Failed Dependency"
+        },
+        {
+          "id": "84d94243-4e09-4b68-bb17-441accb4de65",
+          "providerRank": 4,
+          "title": "Home Automation",
+          "sourceUrl": "https://www.flickr.com/photos/106574022@N04/11449016436",
+          "originalUrl": "https://live.staticflickr.com/3669/11449016436_b3c46302dd.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/84d94243-4e09-4b68-bb17-441accb4de65/thumb/",
+          "creator": {
+            "name": "MarkMoz12",
+            "profileUrl": "https://www.flickr.com/photos/106574022@N04"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/84d94243-4e09-4b68-bb17-441accb4de65.img",
+          "bytes": 46419,
+          "sha256": "cb479c3e3f298e7f9b47568bf52c6b0bda996b4a290221acc40b04ffb00bccd3",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "70081c8b-3f3d-4183-ad44-5f646e105e17",
+          "providerRank": 5,
+          "title": "End Station III",
+          "sourceUrl": "https://www.flickr.com/photos/44124348109@N01/2765681389",
+          "originalUrl": "https://live.staticflickr.com/3218/2765681389_6210d0813a_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/70081c8b-3f3d-4183-ad44-5f646e105e17/thumb/",
+          "creator": {
+            "name": "jurvetson",
+            "profileUrl": "https://www.flickr.com/photos/44124348109@N01"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/70081c8b-3f3d-4183-ad44-5f646e105e17.img",
+          "bytes": 55431,
+          "sha256": "89b290b65ee9ccdad6dae85cc47979aa1fba686f3a812efdfc6e05eac7679acc",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "284ee286-e3eb-48bb-8589-468ad5b47793",
+          "providerRank": 6,
+          "title": "SpaceX Octaweb",
+          "sourceUrl": "https://www.flickr.com/photos/44124348109@N01/8975298066",
+          "originalUrl": "https://live.staticflickr.com/5450/8975298066_88616205d2_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/284ee286-e3eb-48bb-8589-468ad5b47793/thumb/",
+          "creator": {
+            "name": "jurvetson",
+            "profileUrl": "https://www.flickr.com/photos/44124348109@N01"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/284ee286-e3eb-48bb-8589-468ad5b47793.img",
+          "bytes": 65909,
+          "sha256": "7652c4b4573f54ef2979acdbc45427b5bfe3ee795d42f6f1608e98799adeb5b0",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "386f82ed-ddf5-4538-b259-23d4de5e51ca",
+          "providerRank": 7,
+          "title": "Walmart Check Out Cash Registers",
+          "sourceUrl": "https://www.flickr.com/photos/39160147@N03/14061759587",
+          "originalUrl": "https://live.staticflickr.com/5311/14061759587_05aca53b21_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/386f82ed-ddf5-4538-b259-23d4de5e51ca/thumb/",
+          "creator": {
+            "name": "JeepersMedia",
+            "profileUrl": "https://www.flickr.com/photos/39160147@N03"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/386f82ed-ddf5-4538-b259-23d4de5e51ca.img",
+          "bytes": 40560,
+          "sha256": "3985213cdb79dfe678216a8ed724647698d93fd63255c86ab675484a2e01fc1d",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "89ac9d15-9653-44f9-a08c-633e5c80bb41",
+          "providerRank": 8,
+          "title": "Tesla Autobots",
+          "sourceUrl": "https://www.flickr.com/photos/44124348109@N01/6219463656",
+          "originalUrl": "https://live.staticflickr.com/6173/6219463656_b96e285c6f_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/89ac9d15-9653-44f9-a08c-633e5c80bb41/thumb/",
+          "creator": {
+            "name": "jurvetson",
+            "profileUrl": "https://www.flickr.com/photos/44124348109@N01"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/89ac9d15-9653-44f9-a08c-633e5c80bb41.img",
+          "bytes": 59139,
+          "sha256": "69d8af64b2939c58e712b9f0592d15b8aecb9f2aac5b5de2c735adaae24e65c3",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "878b6887-a64f-442a-8756-e1e7b996f1d1",
+          "providerRank": 9,
+          "title": "Tesla Motors Assembly Line",
+          "sourceUrl": "https://www.flickr.com/photos/44124348109@N01/6858583426",
+          "originalUrl": "https://live.staticflickr.com/65535/6858583426_2e3d8e493a_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/878b6887-a64f-442a-8756-e1e7b996f1d1/thumb/",
+          "creator": {
+            "name": "jurvetson",
+            "profileUrl": "https://www.flickr.com/photos/44124348109@N01"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/878b6887-a64f-442a-8756-e1e7b996f1d1.img",
+          "bytes": 65492,
+          "sha256": "89d5298cee131246ef771fff747c985c802fb147de6615fd08ed5a9279ffc5c7",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "011b6419-2991-452c-874a-95c197b73893",
+          "providerRank": 10,
+          "title": "Walmart",
+          "sourceUrl": "https://www.flickr.com/photos/39160147@N03/14061684218",
+          "originalUrl": "https://live.staticflickr.com/2900/14061684218_690026f62f_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/011b6419-2991-452c-874a-95c197b73893/thumb/",
+          "creator": {
+            "name": "JeepersMedia",
+            "profileUrl": "https://www.flickr.com/photos/39160147@N03"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/011b6419-2991-452c-874a-95c197b73893.img",
+          "bytes": 41695,
+          "sha256": "dec6227cfa168df6ed0d355fc40f1eff0b3a8ad3e5947615b02cf859d32aa5fa",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "9888806e-6446-4ed6-8d33-0c315b3ed6da",
+          "providerRank": 11,
+          "title": "Moar Troll",
+          "sourceUrl": "https://www.flickr.com/photos/39911510@N00/2658271052",
+          "originalUrl": "https://live.staticflickr.com/3278/2658271052_b405787bf8_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/9888806e-6446-4ed6-8d33-0c315b3ed6da/thumb/",
+          "creator": {
+            "name": "breadman017",
+            "profileUrl": "https://www.flickr.com/photos/39911510@N00"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/9888806e-6446-4ed6-8d33-0c315b3ed6da.img",
+          "bytes": 25720,
+          "sha256": "87c7a4b2c32a53493db04dd9438981e8614e48e90bdceceab633d028f571f3ee",
+          "mime": "image/jpeg"
+        },
+        {
+          "id": "8acdfdc4-51ae-44b5-a406-7acc97008f5b",
+          "providerRank": 12,
+          "title": "Tesla Robot Dance",
+          "sourceUrl": "https://www.flickr.com/photos/44124348109@N01/7408451314",
+          "originalUrl": "https://live.staticflickr.com/7279/7408451314_e0c3faeaaa_b.jpg",
+          "previewUrl": "https://api.openverse.org/v1/images/8acdfdc4-51ae-44b5-a406-7acc97008f5b/thumb/",
+          "creator": {
+            "name": "jurvetson",
+            "profileUrl": "https://www.flickr.com/photos/44124348109@N01"
+          },
+          "license": {
+            "name": "by",
+            "version": "2.0",
+            "url": "https://creativecommons.org/licenses/by/2.0/",
+            "independentlyVerified": false
+          },
+          "sourceProvider": "flickr",
+          "file": "images/8acdfdc4-51ae-44b5-a406-7acc97008f5b.img",
+          "bytes": 92721,
+          "sha256": "7487ac521d9c7b1ff30c6eb66327dc19863c15cba26ce7e15f5fcf768954bcab",
+          "mime": "image/jpeg"
+        }
+      ]
+    }
+  ]
+}

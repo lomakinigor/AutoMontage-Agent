@@ -4,7 +4,9 @@ set -e
 cd "$(dirname "$0")/.."
 OUT=/tmp/preview_h
 echo "=== 1/4 рендер PreviewH (3100 кадров) ==="
-npx remotion render PreviewH "$OUT"_raw.mp4 --concurrency=2 --log=error
+# Remotion otherwise exposes every root .env key to the render browser.
+node node_modules/@remotion/cli/remotion-cli.js render PreviewH "$OUT"_raw.mp4 \
+  --env-file="$PWD/config/remotion-public.env" --concurrency=2 --log=error
 echo "=== 2/4 финиш (loudnorm -14 LUFS) ==="
 node scripts/finish.js "$OUT"_raw.mp4 "$OUT"_fin.mp4 --hdrfix off
 echo "=== 3/4 музыка пользователя (локальный assets/music/song.wav + ducking) ==="

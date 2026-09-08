@@ -208,3 +208,19 @@ test('render, finish, and music failures preserve the previous current preview b
     });
   }
 });
+
+test('runPreview binds the exact bytes parsed before preparation, not a later same-path draft', (t) => {
+  const fixture = makeProject(t);
+  const beforeManifest = fs.readFileSync(path.join(fixture.workspace.dir, 'project.json'));
+  const { prepareLessonPreview } = require('../scripts/lesson/preview');
+  assert.throws(() => runPreview({ projectDir: fixture.workspace.dir, briefPath: fixture.published.jsonPath, open: false }, {
+    ...fakePreviewTools({ calls: [] }),
+    prepareLessonPreviewImpl(options) {
+      const prepared = prepareLessonPreview(options);
+      fs.appendFileSync(fixture.published.jsonPath, ' ');
+      return prepared;
+    },
+  }), /preview inputs changed/);
+  assert.deepEqual(fs.readFileSync(path.join(fixture.workspace.dir, 'project.json')), beforeManifest);
+  assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'previews/current-preview.mp4')), false);
+});

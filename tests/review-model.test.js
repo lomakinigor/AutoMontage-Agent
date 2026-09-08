@@ -75,6 +75,7 @@ test('review state exposes only current rendered preview metadata and an opaque 
 
   assert.deepEqual(state.currentPreview, {
     url: '/media/current-preview',
+    stale: false,
     kind: 'excerpt',
     fromSec: 31.5,
     toSec: 57.5,

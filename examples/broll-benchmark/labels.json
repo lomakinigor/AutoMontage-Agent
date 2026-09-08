@@ -1,0 +1,20 @@
+{
+  "rater": "Codex visual audit of shuffled contact sheets before running or viewing SigLIP2 ranks; not human blind validation",
+  "scale": {"0":"wrong subject or violates a visible hard constraint", "1":"generic topical relation", "2":"directly relevant scene/object but missing a requested visible detail", "3":"closest visible scene match; still does not establish motion, ownership or causality"},
+  "relevantThreshold": 2,
+  "rubric": {
+    "object":"3 vacuum on a domestic floor near furniture; 2 recognisable vacuum indoors; 1 related device/demo/illustration; 0 unrelated. Motion cannot be proven by a still.",
+    "person":"3 visible person/hands working at a laptop; 2 work desk with laptop and person doing another task; 1 laptop alone or desktop office work; 0 unrelated. Business ownership is not visually inferable.",
+    "horizontal":"3 multiple people visibly discussing/working around an office table; 2 office group with discussion not clear; 1 generic workplace; 0 non-office/non-work scene.",
+    "no-people":"3 rack front with clearly visible active lights and nobody; 2 recognisable rack with nobody but lights unclear; 1 individual hardware or loose infrastructure; 0 people or unrelated. Blinking is not inferable.",
+    "abstract":"3 explicit visual connection between automation and business growth; 2 recognisable productive automation process; 1 generic business/technology; 0 unrelated. Causality is not inferred from factories alone."
+  },
+  "grades": {
+    "object":{"A":2,"B":3,"C":2,"D":2,"E":0,"F":2,"G":1,"H":2,"I":1,"J":0,"K":3,"L":1},
+    "person":{"A":2,"B":1,"C":1,"D":3,"E":3,"F":2,"G":1,"H":1,"I":0,"J":0,"K":3,"L":1},
+    "horizontal":{"A":3,"B":3,"C":0,"D":3,"E":0,"F":2,"G":0,"H":2,"I":3,"J":0,"K":3,"L":3},
+    "no-people":{"A":2,"B":1,"C":2,"D":3,"E":0,"F":2,"G":1,"H":2,"I":1,"J":1,"K":2,"L":2},
+    "abstract":{"A":2,"B":2,"C":1,"D":2,"E":0,"F":2,"G":1,"H":1,"I":1}
+  },
+  "limitations": ["Only 5 queries and 57 downloaded images; 3 failed thumbnails are excluded identically from every ranker.","Judgments are from one model, with no independent human rater.","Retrieval provider is Openverse, not Pexels.","Images and duplicates can make semantic relevance easier than real video selection.","No action/time accuracy, editorial aesthetics, license accuracy, commercial-use approval or end-to-end importer quality is measured."]
+}

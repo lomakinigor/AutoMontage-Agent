@@ -4,6 +4,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { parseMediaProbeJson } = require('../media-probe');
+const { validateProvenance } = require('../broll/provenance');
+const { scanEmbeddedText } = require('../broll/text-scan');
 const {
   buildImportedAssetRecord,
   buildImportedPublicationClaim,
@@ -1252,7 +1254,7 @@ function copyExclusiveFile({
   }
 }
 
-function buildCanonicalMetadata(owned, headers, master, fileSystem) {
+function buildCanonicalMetadata(owned, headers, master, fileSystem, discovery = null) {
   assertOutputIdentities(fileSystem, owned);
   const canonicalSha256 = hashOpenedFile(
     fileSystem,
@@ -1268,7 +1270,7 @@ function buildCanonicalMetadata(owned, headers, master, fileSystem) {
     : null;
   assertOutputIdentities(fileSystem, owned);
   const metadata = {
-    version: 2,
+    version: discovery ? 3 : 2,
     id: owned.id,
     label: headers.filename,
     mediaKind: headers.mediaKind,
@@ -1280,6 +1282,10 @@ function buildCanonicalMetadata(owned, headers, master, fileSystem) {
     durationSec: headers.mediaKind === 'image' ? 0 : master.durationSec,
     audioDurationSec: headers.mediaKind === 'image' ? null : master.audioDurationSec,
     hasAudio: headers.mediaKind === 'image' ? false : master.hasAudio,
+    ...(discovery ? {
+      provenance: discovery.provenance,
+      textScan: discovery.textScan,
+    } : {}),
   };
   return metadata;
 }
@@ -1770,6 +1776,8 @@ async function importReviewMedia({
   statfsImpl = fs.statfsSync,
   randomId = crypto.randomUUID,
   platform = process.platform,
+  provenance = null,
+  scanEmbeddedTextImpl = scanEmbeddedText,
 }) {
   if (!controller?.acquire()) throw mediaImportError(409, 'MEDIA_IMPORT_BUSY');
   let owned;
@@ -1777,6 +1785,7 @@ async function importReviewMedia({
   let workError = null;
   try {
     const parsedHeaders = parseImportHeaders(headers);
+    const discoveryProvenance = provenance === null ? null : validateProvenance(provenance);
     assertDiskSpace(projectDir, statfsImpl, requiredFreeBytes(parsedHeaders.contentLength));
     try {
       mutationLease = acquireProjectMutationLease(projectDir, { fileSystem, platform });
@@ -1827,7 +1836,38 @@ async function importReviewMedia({
       const master = await verifyNormalizedOutputs({
         source, outputFps, owned, signal, fileSystem, run: runMediaProcessImpl,
       });
-      metadata = buildCanonicalMetadata(owned, parsedHeaders, master, fileSystem);
+      let discovery = null;
+      if (discoveryProvenance) {
+        let textScan;
+        try {
+          textScan = await scanEmbeddedTextImpl({
+            filePath: owned.canonicalPath,
+            mediaKind: parsedHeaders.mediaKind,
+            durationSec: parsedHeaders.mediaKind === 'video' ? master.durationSec : 0,
+            signal,
+            run: runMediaProcessImpl,
+          });
+        } catch (error) {
+          if (signal?.aborted || error?.code === 'MEDIA_PROCESS_ABORTED') {
+            if (error?.code === 'MEDIA_PROCESS_ABORTED') throw error;
+            throw Object.assign(new Error('media import aborted'), {
+              code: 'MEDIA_PROCESS_ABORTED', cause: error,
+            });
+          }
+          textScan = {
+            status: 'unavailable', text: '', reasons: ['ocr-failed'], engine: 'tesseract',
+          };
+        }
+        if (signal?.aborted) {
+          throw Object.assign(new Error('media import aborted'), {
+            code: 'MEDIA_PROCESS_ABORTED',
+          });
+        }
+        discovery = { provenance: discoveryProvenance, textScan };
+      }
+      metadata = buildCanonicalMetadata(
+        owned, parsedHeaders, master, fileSystem, discovery,
+      );
       const staged = verifyImportedAssetFiles({
         id: owned.id,
         mediaKind: parsedHeaders.mediaKind,

@@ -9,6 +9,7 @@ function fakeChild() {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
+  child.stdin = new PassThrough();
   child.killCalls = [];
   child.kill = (signal) => {
     child.killCalls.push(signal);
@@ -44,6 +45,25 @@ test('media process uses argv with shell disabled and returns bounded output aft
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+});
+
+test('media process supports bounded binary pipes without changing text defaults', async () => {
+  const child = fakeChild();
+  const input = Buffer.from('input bytes');
+  let invocation;
+  const received = [];
+  child.stdin.on('data', (chunk) => received.push(chunk));
+  const promise = runMediaProcess({
+    command: 'worker', args: [], stdin: input, stdoutEncoding: null,
+    maxStdoutBytes: 32,
+    spawnImpl(command, args, options) { invocation = options; return child; },
+  });
+  child.stdout.end(Buffer.from([0, 255, 1]));
+  child.emit('close', 0, null);
+  const result = await promise;
+  assert.deepEqual(Buffer.concat(received), input);
+  assert.deepEqual(result.stdout, Buffer.from([0, 255, 1]));
+  assert.deepEqual(invocation.stdio, ['pipe', 'pipe', 'pipe']);
 });
 
 test('media process sends one SIGTERM on timeout and rejects only after child close', async () => {

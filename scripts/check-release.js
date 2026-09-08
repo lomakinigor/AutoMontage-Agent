@@ -310,9 +310,15 @@ function checkSecurityException(files, read, issues, now) {
     incorrect.push('triggers');
   }
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  // A public calendar date may legitimately be one day ahead of UTC once UTC+14 has
+  // crossed midnight (10:00 UTC). This keeps the gate deterministic in local and CI
+  // time zones while still rejecting dates that are not current anywhere on Earth.
+  const nextDay = new Date(today.getTime() + 86_400_000);
+  const nextDayExistsGlobally = now.getTime() >= today.getTime() + (10 * 60 * 60 * 1000);
+  const latestCalendarDate = nextDayExistsGlobally ? nextDay : today;
   const reviewedAt = parseUtcCalendarDate(exception.reviewedAt || '');
   const releaseDate = releaseDateForVersion(read('CHANGELOG.md'), pkg.version);
-  if (!reviewedAt || reviewedAt.getTime() > today.getTime()
+  if (!reviewedAt || reviewedAt.getTime() > latestCalendarDate.getTime()
     || !releaseDate || reviewedAt.getTime() !== releaseDate.getTime()) {
     incorrect.push('reviewedAt');
   }
