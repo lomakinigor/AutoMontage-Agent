@@ -7,6 +7,7 @@ const { URL } = require('node:url');
 const Ajv = require('ajv');
 
 const {
+  openReadOnlyFlags,
   setPrivateDescriptorMode,
   withNoFollow,
 } = require('../filesystem-capabilities');
@@ -14,9 +15,14 @@ const {
 const projectSchema = require('../../schema/project.schema.json');
 const { formatBriefMarkdown, isRenderableBrollSource, validateLessonBrief } = require('../lesson/brief');
 const {
+  formatMotionBriefMarkdown,
+  validateMotionBrief,
+} = require('../motion/brief');
+const {
   preflightBriefBrollMedia,
   verifyBriefBrollMedia,
 } = require('../lesson/broll-media-files');
+const { roughCutPaths } = require('./rough-cut-model');
 const projectManifestValidator = new Ajv({ allErrors: true }).compile(projectSchema);
 const TEMPORARY_ID = /^[A-Za-z0-9_-]+$/;
 
@@ -50,8 +56,19 @@ function formatProjectId({ date, name }) {
 }
 
 function migrateProjectManifest(manifest) {
+  if (manifest && typeof manifest === 'object' && !Array.isArray(manifest)) {
+    if (!Object.hasOwn(manifest, 'projectKind')) manifest.projectKind = 'video';
+    if (Array.isArray(manifest.briefs)) {
+      for (const brief of manifest.briefs) {
+        if (brief && typeof brief === 'object' && !Object.hasOwn(brief, 'kind')) {
+          brief.kind = 'lesson';
+        }
+      }
+    }
+  }
   if (manifest && typeof manifest === 'object' && !Array.isArray(manifest)
     && manifest.source && typeof manifest.source === 'object') {
+    if (!Object.hasOwn(manifest.source, 'mediaKind')) manifest.source.mediaKind = 'video';
     if (!Object.hasOwn(manifest.source, 'originalLocalPath')) {
       manifest.source.originalLocalPath = manifest.source.localPath;
     }
@@ -94,15 +111,23 @@ function lstatIfPresent(fileSystem, target) {
   }
 }
 
-function assertNoProjectSymlink(root, segments, fileSystem, label) {
+function assertNoProjectSymlink(root, segments, fileSystem, label, { tolerateLeafPending = null } = {}) {
   const rootStat = fileSystem.lstatSync(root);
   if (rootStat.isSymbolicLink()) {
     throw new Error(`${label} escapes through a symbolic link`);
   }
   let current = root;
-  for (const segment of segments) {
+  for (const [index, segment] of segments.entries()) {
     current = path.join(current, segment);
-    const stat = lstatIfPresent(fileSystem, current);
+    let stat;
+    try {
+      stat = lstatIfPresent(fileSystem, current);
+    } catch (error) {
+      // Удаляемый на Windows последний сегмент: предки уже проверены, сам файл вот-вот исчезнет.
+      if (index === segments.length - 1 && tolerateLeafPending
+        && isWindowsPendingDelete(error, tolerateLeafPending)) break;
+      throw error;
+    }
     if (!stat) break;
     if (stat.isSymbolicLink()) {
       throw new Error(`${label} escapes through a symbolic link`);
@@ -110,9 +135,43 @@ function assertNoProjectSymlink(root, segments, fileSystem, label) {
   }
 }
 
+// Запись исчезла между проверкой и использованием: другой процесс как раз убрал файл.
+function isVanishedEntry(error) {
+  return Boolean(error && (error.code === 'ENOENT' || error.code === 'ENOTDIR'));
+}
+
+// Windows: файл, который другой процесс удаляет или переименовывает (delete pending), до закрытия
+// последнего дескриптора отвечает на lstat, realpath, open и link ошибкой EPERM или EBUSY, а не
+// ENOENT. Только на win32 это значит «запись уходит»; на других системах EPERM – настоящий отказ.
+function isWindowsPendingDelete(error, platform) {
+  return Boolean(platform === 'win32' && error
+    && (error.code === 'EPERM' || error.code === 'EBUSY'));
+}
+
+// Проверка пути читает файловую систему несколькими вызовами подряд. Если чужой процесс удалил
+// файл посреди проверки (например, отпустил lease), проверка повторяется целиком с нуля: каждый
+// повтор снова отказывает symlink и выходу за проект, а не пропускает шаг.
 function resolveProjectPath(projectDir, storedPath, options = {}) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return resolveProjectPathOnce(projectDir, storedPath, options);
+    } catch (error) {
+      if (attempt < 3 && isVanishedEntry(error)) continue;
+      throw error;
+    }
+  }
+}
+
+function resolveProjectPathOnce(projectDir, storedPath, options) {
   const label = options.label || 'project path';
   const fileSystem = options.fileSystem || fs;
+  const platform = options.platform || process.platform;
+  // Только по явному запросу (захват lease): удаляемый на Windows файл равен отсутствующему.
+  // На Windows EPERM значит и обычный ACCESS_DENIED, поэтому остальные вызовы остаются строгими:
+  // иначе symlink в последнем сегменте с отказом lstat/realpath прошёл бы без проверки цели.
+  const pendingPlatform = options.tolerateWindowsPendingDelete === true && !options.mustExist
+    ? platform
+    : null;
   if (typeof storedPath !== 'string' || storedPath.length === 0 || storedPath.includes('\0')) {
     throw new Error(`${label} must be a non-empty relative path`);
   }
@@ -132,7 +191,7 @@ function resolveProjectPath(projectDir, storedPath, options = {}) {
     throw new Error(`${label} escapes the project workspace`);
   }
 
-  assertNoProjectSymlink(root, segments, fileSystem, label);
+  assertNoProjectSymlink(root, segments, fileSystem, label, { tolerateLeafPending: pendingPlatform });
   const rootReal = fileSystem.realpathSync(root);
   let ancestor = candidate;
   while (!fileSystem.existsSync(ancestor)) {
@@ -140,20 +199,38 @@ function resolveProjectPath(projectDir, storedPath, options = {}) {
     if (parent === ancestor) break;
     ancestor = parent;
   }
-  const ancestorReal = fileSystem.realpathSync(ancestor);
+  let ancestorReal;
+  let candidatePending = false;
+  try {
+    ancestorReal = fileSystem.realpathSync(ancestor);
+  } catch (error) {
+    if (ancestor !== candidate || !pendingPlatform
+      || !isWindowsPendingDelete(error, pendingPlatform)) throw error;
+    // Сам файл удаляется: сверяем с корнем его папку, как для ещё не созданного файла.
+    candidatePending = true;
+    ancestorReal = fileSystem.realpathSync(path.dirname(candidate));
+  }
   if (!isInside(rootReal, ancestorReal)) {
     throw new Error(`${label} escapes through a symbolic link`);
   }
+  if (candidatePending) return candidate;
 
   if (options.mustExist && !fileSystem.existsSync(candidate)) {
     throw new Error(`${label} does not exist`);
   }
   if (fileSystem.existsSync(candidate)) {
-    const candidateReal = fileSystem.realpathSync(candidate);
-    if (!isInside(rootReal, candidateReal)) {
-      throw new Error(`${label} escapes through a symbolic link`);
+    let candidateReal;
+    let stat;
+    try {
+      candidateReal = fileSystem.realpathSync(candidate);
+      if (!isInside(rootReal, candidateReal)) {
+        throw new Error(`${label} escapes through a symbolic link`);
+      }
+      stat = fileSystem.statSync(candidateReal);
+    } catch (error) {
+      if (pendingPlatform && isWindowsPendingDelete(error, pendingPlatform)) return candidate;
+      throw error;
     }
-    const stat = fileSystem.statSync(candidateReal);
     if (options.type === 'file' && !stat.isFile()) throw new Error(`${label} must be a file`);
     if (options.type === 'directory' && !stat.isDirectory()) {
       throw new Error(`${label} must be a directory`);
@@ -172,13 +249,50 @@ function sameFileIdentity(left, right) {
   return left && right && left.dev === right.dev && left.ino === right.ino;
 }
 
+function captureProjectDirectoryGuard(projectDir, destination, fileSystem, label) {
+  const root = path.resolve(projectDir);
+  const parent = path.dirname(destination);
+  if (!isInside(root, parent)) throw new Error(`${label} escapes the project workspace`);
+  const relative = path.relative(root, parent);
+  const paths = [root];
+  let current = root;
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    paths.push(current);
+  }
+  const guards = paths.map((guardPath) => {
+    const stat = fileSystem.lstatSync(guardPath);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`${label} escapes through a symbolic link`);
+    }
+    return { path: guardPath, identity: stat };
+  });
+  return {
+    assertCurrent() {
+      for (const guard of guards) {
+        const stat = fileSystem.lstatSync(guard.path);
+        if (!stat.isDirectory() || stat.isSymbolicLink()
+          || !sameFileIdentity(stat, guard.identity)) {
+          throw new Error(`${label} directory identity changed`);
+        }
+      }
+    },
+  };
+}
+
 function stageOwnedSiblingFile(destination, data, {
   fileSystem = fs,
   temporaryId = randomUUID,
   purpose = 'write',
   platform = process.platform,
+  writeToHandle = null,
+  assertParentCurrent = null,
+  verifyPublishedIdentity = false,
+  retainTemporaryLink = false,
 } = {}) {
-  const bytes = Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(data, 'utf8');
+  const bytes = writeToHandle
+    ? null
+    : (Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(data, 'utf8'));
   const temporaryPath = `${destination}.tmp-${purpose}-${safeTemporaryId(temporaryId)}`;
   const constants = fileSystem.constants || fs.constants;
   const flags = withNoFollow(
@@ -188,13 +302,30 @@ function stageOwnedSiblingFile(destination, data, {
   );
   let handle = null;
   let identity = null;
+  const assertStageCurrent = () => {
+    const current = lstatIfPresent(fileSystem, temporaryPath);
+    if (!current || !current.isFile() || current.isSymbolicLink()
+      || !sameFileIdentity(identity, current)) {
+      throw new Error('staged project file identity changed');
+    }
+  };
   try {
+    if (assertParentCurrent) assertParentCurrent();
     handle = fileSystem.openSync(temporaryPath, flags, 0o600);
     identity = fileSystem.fstatSync(handle);
     if (!identity.isFile()) throw new Error('temporary project file must be regular');
+    // A parent can change inside openSync; no sensitive bytes may be written first.
+    if (assertParentCurrent) assertParentCurrent();
     setPrivateDescriptorMode(fileSystem, handle, 0o600, platform);
-    fileSystem.writeFileSync(handle, data, { encoding: 'utf8' });
+    if (writeToHandle) writeToHandle(handle);
+    else fileSystem.writeFileSync(handle, data, { encoding: 'utf8' });
     fileSystem.fsyncSync(handle);
+    if (assertParentCurrent) assertParentCurrent();
+    assertStageCurrent();
+    fileSystem.closeSync(handle);
+    handle = null;
+    if (assertParentCurrent) assertParentCurrent();
+    assertStageCurrent();
   } catch (error) {
     if (handle !== null) fileSystem.closeSync(handle);
     const current = lstatIfPresent(fileSystem, temporaryPath);
@@ -203,27 +334,57 @@ function stageOwnedSiblingFile(destination, data, {
     }
     throw error;
   }
-  fileSystem.closeSync(handle);
 
   let committedPath = null;
   return {
     path: temporaryPath,
     commitReplace(target = destination) {
+      if (assertParentCurrent) assertParentCurrent();
+      assertStageCurrent();
       fileSystem.renameSync(temporaryPath, target);
       committedPath = target;
+      if (verifyPublishedIdentity) {
+        const current = lstatIfPresent(fileSystem, target);
+        if (!current || !current.isFile() || current.isSymbolicLink()
+          || !sameFileIdentity(identity, current)) {
+          throw new Error('published project file identity changed');
+        }
+      }
+      if (assertParentCurrent) assertParentCurrent();
       return { identity, bytes };
     },
     commitNoReplace(target = destination) {
+      if (assertParentCurrent) assertParentCurrent();
+      assertStageCurrent();
       fileSystem.linkSync(temporaryPath, target);
       committedPath = target;
-      fileSystem.unlinkSync(temporaryPath);
+      if (verifyPublishedIdentity) {
+        const current = lstatIfPresent(fileSystem, target);
+        if (!current || !current.isFile() || current.isSymbolicLink()
+          || !sameFileIdentity(identity, current)) {
+          throw new Error('published project file identity changed');
+        }
+      }
+      if (assertParentCurrent) assertParentCurrent();
+      assertStageCurrent();
+      if (!retainTemporaryLink) fileSystem.unlinkSync(temporaryPath);
     },
     commit(target = destination) {
       this.commitReplace(target);
     },
     cleanupTemp() {
+      if (retainTemporaryLink && assertParentCurrent) {
+        try { assertParentCurrent(); } catch { return false; }
+      }
       const current = lstatIfPresent(fileSystem, temporaryPath);
-      if (current && sameFileIdentity(identity, current)) fileSystem.unlinkSync(temporaryPath);
+      if (current && current.isFile() && !current.isSymbolicLink()
+        && sameFileIdentity(identity, current)) {
+        if (retainTemporaryLink && assertParentCurrent) {
+          try { assertParentCurrent(); } catch { return false; }
+        }
+        fileSystem.unlinkSync(temporaryPath);
+      }
+      return true;
     },
     removeCommitted() {
       if (!committedPath) return;
@@ -237,6 +398,8 @@ function stageOwnedSiblingFile(destination, data, {
 function stageNoReplaceFileSet(files, {
   fileSystem = fs,
   temporaryId = randomUUID,
+  assertParentCurrent = null,
+  verifyPublishedIdentity = false,
 } = {}) {
   const stages = [];
   try {
@@ -244,7 +407,7 @@ function stageNoReplaceFileSet(files, {
       stages.push(stageOwnedSiblingFile(
         destination,
         data,
-        { fileSystem, temporaryId, purpose },
+        { fileSystem, temporaryId, purpose, assertParentCurrent, verifyPublishedIdentity },
       ));
     }
   } catch (error) {
@@ -268,6 +431,8 @@ function writeFilesNoReplace(files, options = {}) {
   const staged = stageNoReplaceFileSet(files, options);
   try {
     staged.commit();
+    if (options.afterCommit) options.afterCommit();
+    if (options.assertParentCurrent) options.assertParentCurrent();
   } catch (error) {
     try {
       staged.rollback();
@@ -277,6 +442,93 @@ function writeFilesNoReplace(files, options = {}) {
     throw error;
   } finally {
     staged.cleanup();
+  }
+}
+
+function copyOpenedFile(fileSystem, sourceHandle, destinationHandle) {
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  for (;;) {
+    const bytesRead = fileSystem.readSync(sourceHandle, buffer, 0, buffer.length, null);
+    if (bytesRead === 0) return;
+    let written = 0;
+    while (written < bytesRead) {
+      written += fileSystem.writeSync(
+        destinationHandle,
+        buffer,
+        written,
+        bytesRead - written,
+        null,
+      );
+    }
+  }
+}
+
+function copyProjectFileNoReplace({
+  projectDir,
+  sourcePath,
+  storedPath,
+  fileSystem = fs,
+  temporaryId = randomUUID,
+  platform = process.platform,
+  privacyGuard = null,
+}) {
+  const resolvedProjectDir = path.resolve(projectDir);
+  const destination = resolveProjectPath(resolvedProjectDir, storedPath, {
+    label: 'project source destination',
+    fileSystem,
+    mustExist: false,
+    type: 'file',
+  });
+  const directoryGuard = captureProjectDirectoryGuard(
+    resolvedProjectDir,
+    destination,
+    fileSystem,
+    'project source destination',
+  );
+  const source = path.resolve(sourcePath);
+  const sourcePathStat = fileSystem.lstatSync(source);
+  if (!sourcePathStat.isFile() || sourcePathStat.isSymbolicLink()) {
+    throw new Error('project source must be a regular file, not a symbolic link');
+  }
+
+  const sourceHandle = fileSystem.openSync(source, openReadOnlyFlags(fileSystem, platform));
+  let staged = null;
+  try {
+    const openedSource = fileSystem.fstatSync(sourceHandle);
+    const currentSource = fileSystem.lstatSync(source);
+    if (!openedSource.isFile() || currentSource.isSymbolicLink()
+      || !sameFileIdentity(openedSource, currentSource)) {
+      throw new Error('project source changed or escapes through a symbolic link');
+    }
+
+    staged = stageOwnedSiblingFile(destination, null, {
+      fileSystem,
+      temporaryId,
+      purpose: 'source',
+      platform,
+      assertParentCurrent() { directoryGuard.assertCurrent(); privacyGuard?.assertCurrent(); },
+      verifyPublishedIdentity: true,
+      writeToHandle(destinationHandle) {
+        copyOpenedFile(fileSystem, sourceHandle, destinationHandle);
+        const copiedSource = fileSystem.fstatSync(sourceHandle);
+        if (!sameFileIdentity(openedSource, copiedSource)
+          || openedSource.size !== copiedSource.size
+          || openedSource.mtimeMs !== copiedSource.mtimeMs
+          || openedSource.ctimeMs !== copiedSource.ctimeMs) {
+          throw new Error('project source changed while it was copied');
+        }
+      },
+    });
+    try {
+      staged.commitNoReplace();
+    } catch (error) {
+      staged.removeCommitted();
+      throw error;
+    }
+    return destination;
+  } finally {
+    fileSystem.closeSync(sourceHandle);
+    if (staged) staged.cleanupTemp();
   }
 }
 
@@ -297,6 +549,28 @@ function validateProjectManifest(manifest, { projectDir, fileSystem = fs } = {})
     ))) {
     throw new Error('manifest.latestRender must match one complete manifest.renders[].dir entry');
   }
+  const takeIds = (migratedManifest.takes || []).map((take) => take.id);
+  if (new Set(takeIds).size !== takeIds.length) {
+    throw new Error('manifest.takes ids must be unique');
+  }
+  const roughCut = migratedManifest.roughCut;
+  if (roughCut) {
+    if (roughCut.status === 'confirmed') {
+      if (!roughCut.confirmedAt) {
+        throw new Error('manifest.roughCut.confirmedAt is required when status is confirmed');
+      }
+      if (!roughCut.confirmedBy) {
+        throw new Error('manifest.roughCut.confirmedBy is required when status is confirmed');
+      }
+    } else if (roughCut.confirmedAt !== undefined || roughCut.confirmedBy !== undefined) {
+      const extra = roughCut.confirmedAt !== undefined ? 'confirmedAt' : 'confirmedBy';
+      throw new Error(`manifest.roughCut.${extra} is allowed only when status is confirmed`);
+    }
+    const pair = roughCutPaths(roughCut.editPath);
+    if (pair.filePath !== roughCut.filePath) {
+      throw new Error(`manifest.roughCut.filePath must be ${pair.filePath} for manifest.roughCut.editPath ${roughCut.editPath}`);
+    }
+  }
   if (!projectDir) return migratedManifest;
 
   const paths = [
@@ -312,6 +586,13 @@ function validateProjectManifest(manifest, { projectDir, fileSystem = fs } = {})
     paths.push(
       ['manifest.currentPreview.filePath', migratedManifest.currentPreview.filePath],
       ['manifest.currentPreview.briefPath', migratedManifest.currentPreview.briefPath],
+    );
+  }
+  if (roughCut) {
+    // Только containment: файла копии может ещё не быть (сборка идёт после записи паспорта).
+    paths.push(
+      ['manifest.roughCut.editPath', roughCut.editPath],
+      ['manifest.roughCut.filePath', roughCut.filePath],
     );
   }
   migratedManifest.briefs.forEach((brief, index) => {
@@ -331,6 +612,12 @@ function validateProjectManifest(manifest, { projectDir, fileSystem = fs } = {})
       [`manifest.source.history[${index}].localPath`, entry.localPath],
       [`manifest.source.history[${index}].editPath`, entry.editPath],
       [`manifest.source.history[${index}].transcriptPath`, entry.transcriptPath],
+    );
+  });
+  (migratedManifest.takes || []).forEach((take, index) => {
+    paths.push(
+      [`manifest.takes[${index}].localPath`, take.localPath],
+      [`manifest.takes[${index}].transcriptPath`, take.transcriptPath],
     );
   });
   for (const [label, storedPath] of paths) {
@@ -358,6 +645,7 @@ function readProjectManifest(projectDir) {
 function writeProjectManifestAtomic(projectDir, manifest, {
   fileSystem = fs,
   temporaryId = randomUUID,
+  privacyGuard = null,
 } = {}) {
   const resolvedProjectDir = path.resolve(projectDir);
   const manifestPath = resolveProjectPath(resolvedProjectDir, 'project.json', {
@@ -373,10 +661,13 @@ function writeProjectManifestAtomic(projectDir, manifest, {
   const staged = stageOwnedSiblingFile(
     manifestPath,
     `${JSON.stringify(validatedManifest, null, 2)}\n`,
-    { fileSystem, temporaryId, purpose: 'manifest' },
+    { fileSystem, temporaryId, purpose: 'manifest', assertParentCurrent: privacyGuard?.assertCurrent },
   );
   try {
     staged.commitReplace();
+  } catch (error) {
+    staged.removeCommitted();
+    throw error;
   } finally {
     staged.cleanupTemp();
   }
@@ -462,6 +753,8 @@ function createOrOpenProject({
   name,
   projectDir,
   sourcePath,
+  projectKind = 'video',
+  mediaKind = projectKind === 'motion-reel' ? 'audio' : 'video',
   now = new Date(),
 }) {
   const resolvedProjectDir = projectDir
@@ -471,6 +764,8 @@ function createOrOpenProject({
 
   if (fs.existsSync(manifestPath)) {
     const manifest = readProjectManifest(resolvedProjectDir);
+    const privacyGuard = manifest.projectKind === 'motion-reel'
+      ? require('./private-workspace').preparePrivateWorkspace(resolvedProjectDir) : null;
     if (!manifest.transcript) {
       const expectedManifest = JSON.parse(JSON.stringify(manifest));
       manifest.transcript = {
@@ -481,7 +776,8 @@ function createOrOpenProject({
     }
     assertMatchingSource(resolvedProjectDir, manifest, sourcePath);
     ensureProjectDirectories(resolvedProjectDir);
-    return asWorkspace(resolvedProjectDir, manifest);
+    privacyGuard?.assertCurrent();
+    return { ...asWorkspace(resolvedProjectDir, manifest), privacyGuard };
   }
 
   if (!name) throw new Error('для нового проекта нужно название');
@@ -494,16 +790,21 @@ function createOrOpenProject({
   const slug = slugifyProjectName(name);
   const id = projectDir ? path.basename(resolvedProjectDir) : formatProjectId({ date: now, name });
   const extension = path.extname(originalPath).toLowerCase() || '.mp4';
-  const localPath = path.posix.join('input', `source${extension}`);
+  const sourceName = projectKind === 'motion-reel' && mediaKind === 'audio'
+    ? 'narration'
+    : 'source';
+  const localPath = path.posix.join('input', `${sourceName}${extension}`);
   const timestamp = now.toISOString();
   const manifest = {
     version: 1,
+    projectKind,
     id,
     name,
     slug,
     createdAt: timestamp,
     updatedAt: timestamp,
     source: {
+      mediaKind,
       originalPath,
       originalLocalPath: localPath,
       localPath,
@@ -521,14 +822,30 @@ function createOrOpenProject({
     final: path.posix.join('final', `${slug}.mp4`),
   };
 
+  const privacyGuard = projectKind === 'motion-reel'
+    ? require('./private-workspace').preparePrivateWorkspace(resolvedProjectDir) : null;
   ensureProjectDirectories(resolvedProjectDir);
+  privacyGuard?.assertCurrent();
   const localSourcePath = resolveProjectPath(resolvedProjectDir, localPath, {
     label: 'manifest.source.localPath',
     mustExist: false,
   });
-  fs.copyFileSync(originalPath, localSourcePath, fs.constants.COPYFILE_EXCL);
-  writeProjectManifest(resolvedProjectDir, manifest);
-  return asWorkspace(resolvedProjectDir, manifest);
+  copyProjectFileNoReplace({
+    projectDir: resolvedProjectDir,
+    sourcePath: originalPath,
+    storedPath: localPath,
+    privacyGuard,
+  });
+  const copiedIdentity = fs.lstatSync(localSourcePath);
+  try {
+    privacyGuard?.assertCurrent();
+    writeProjectManifest(resolvedProjectDir, manifest, { privacyGuard });
+    return { ...asWorkspace(resolvedProjectDir, manifest), privacyGuard };
+  } catch (error) {
+    const current = lstatIfPresent(fs, localSourcePath);
+    if (current && sameFileIdentity(copiedIdentity, current)) fs.unlinkSync(localSourcePath);
+    throw error;
+  }
 }
 
 function formatVersion(number) {
@@ -581,11 +898,13 @@ function recordBrief(workspace, {
   jsonPath,
   markdownPath,
   status,
+  kind = 'lesson',
   theme = null,
   aspect = null,
 }, options = {}) {
   return withProjectMutation(workspace, (transaction) => {
     const entry = {
+      kind,
       revision,
       jsonPath: relativeProjectPath(workspace, jsonPath),
       markdownPath: markdownPath ? relativeProjectPath(workspace, markdownPath) : null,
@@ -612,11 +931,29 @@ function publishBriefRevision(workspace, {
 }, options = {}) {
   const fileSystem = options.fileSystem || fs;
   const temporaryId = options.temporaryId || randomUUID;
+  const briefKind = brief?.kind === 'motion-reel' || kind === 'motion-reel'
+    ? 'motion-reel'
+    : 'lesson';
+  const pathKind = kind === 'motion-reel' ? 'motion' : kind;
+  if (briefKind === 'motion-reel') {
+    if (brief.status !== 'draft' || status !== 'draft') {
+      throw new Error('initial motion brief publication requires status draft');
+    }
+    const validation = validateMotionBrief(brief);
+    if (!validation.ok) throw new Error(`motion brief is invalid: ${validation.errors.join('\n')}`);
+  }
+  const publishedMarkdown = briefKind === 'motion-reel'
+    ? formatMotionBriefMarkdown(brief)
+    : markdown;
+  const privacyGuard = briefKind === 'motion-reel'
+    ? workspace.privacyGuard || require('./private-workspace').preparePrivateWorkspace(workspace.dir, { fileSystem }) : null;
+  privacyGuard?.assertCurrent();
   return withProjectMutation(workspace, (transaction) => {
     const persistedWorkspace = { ...workspace, manifest: transaction.manifest };
-    const allocated = nextBriefPaths(persistedWorkspace, kind, { fileSystem });
-    const markdownPath = markdown === null ? null : allocated.markdownPath;
+    const allocated = nextBriefPaths(persistedWorkspace, pathKind, { fileSystem });
+    const markdownPath = publishedMarkdown === null ? null : allocated.markdownPath;
     const entry = {
+      kind: briefKind,
       revision: allocated.revision,
       jsonPath: relativeProjectPath(workspace, allocated.jsonPath),
       markdownPath: markdownPath ? relativeProjectPath(workspace, markdownPath) : null,
@@ -631,7 +968,7 @@ function publishBriefRevision(workspace, {
     const history = stageNoReplaceFileSet([
       ...(markdownPath ? [{
         destination: markdownPath,
-        data: markdown,
+        data: publishedMarkdown,
         purpose: 'initial-brief-markdown',
       }] : []),
       {
@@ -639,12 +976,13 @@ function publishBriefRevision(workspace, {
         data: `${JSON.stringify(brief, null, 2)}\n`,
         purpose: 'initial-brief-json',
       },
-    ], { fileSystem, temporaryId });
+    ], { fileSystem, temporaryId, assertParentCurrent: privacyGuard?.assertCurrent });
     let manifestCommitted = false;
     try {
       history.commit();
       workspace.manifest = transaction.commitManifest(nextManifest, {
         purpose: 'initial-brief-manifest',
+        assertCurrent: privacyGuard?.assertCurrent,
       });
       manifestCommitted = true;
       return {
@@ -727,12 +1065,25 @@ function acquireProjectMutationLease(projectDir, {
   platform = process.platform,
 } = {}) {
   const resolvedProjectDir = path.resolve(projectDir);
-  const leasePath = resolveProjectPath(resolvedProjectDir, PROJECT_MUTATION_LEASE, {
-    label: 'project mutation lease',
-    fileSystem,
-    mustExist: false,
-    type: 'file',
-  });
+  let leasePath;
+  try {
+    leasePath = resolveProjectPath(resolvedProjectDir, PROJECT_MUTATION_LEASE, {
+      label: 'project mutation lease',
+      fileSystem,
+      mustExist: false,
+      type: 'file',
+      platform,
+      tolerateWindowsPendingDelete: true,
+    });
+  } catch (error) {
+    // Lease другого процесса исчезает и появляется непрерывно: это занятость, а не сбой.
+    // Но если пропала сама папка проекта, это не «повторите позже»: отдаём исходную ошибку.
+    if ((isVanishedEntry(error) || isWindowsPendingDelete(error, platform))
+      && lstatIfPresent(fileSystem, resolvedProjectDir)?.isDirectory()) {
+      throw manifestConflict();
+    }
+    throw error;
+  }
   const token = safeTemporaryId(temporaryId);
   const owner = {
     version: 1,
@@ -751,7 +1102,14 @@ function acquireProjectMutationLease(projectDir, {
       platform,
     });
     try {
-      fileSystem.linkSync(staged.path, leasePath);
+      try {
+        fileSystem.linkSync(staged.path, leasePath);
+      } catch (error) {
+        // Имя lease ещё занято удаляемым файлом прежнего владельца: это занятость, пробуем снова.
+        // Попыток столько же, сколько у цикла; дальше конфликт, и ждёт уже вызывающий по своему сроку.
+        if (isWindowsPendingDelete(error, platform)) continue;
+        throw error;
+      }
       const identity = lstatIfPresent(fileSystem, leasePath);
       if (!identity || identity.isSymbolicLink() || !identity.isFile()) throw manifestConflict();
       const committed = { identity, bytes: ownerBytes };
@@ -795,7 +1153,13 @@ function acquireProjectMutationLease(projectDir, {
     if (!isProvablyDeadLeaseOwner(existing.owner, { hostname, killProcess })) {
       throw manifestConflict();
     }
-    assertFileSnapshot(fileSystem, leasePath, existing.snapshot);
+    try {
+      assertFileSnapshot(fileSystem, leasePath, existing.snapshot);
+    } catch (error) {
+      // Брошенный lease успели убрать или удаляют прямо сейчас: это та же занятость.
+      if (isVanishedEntry(error) || isWindowsPendingDelete(error, platform)) throw manifestConflict();
+      throw error;
+    }
     const tombstonePath = `${leasePath}.dead-${existing.owner.token}`;
     try {
       fileSystem.linkSync(leasePath, tombstonePath);
@@ -993,7 +1357,10 @@ function saveDraftRevisionReserved(workspace, {
   });
   const baseBriefSnapshot = readFileSnapshot(fileSystem, resolvedBasePath);
   const baseBrief = JSON.parse(baseBriefSnapshot.bytes.toString('utf8'));
-  const baseValidation = validateLessonBrief(baseBrief);
+  const baseContract = baseEntry.kind === 'motion-reel'
+    ? { validate: validateMotionBrief, format: formatMotionBriefMarkdown, pathKind: 'motion' }
+    : { validate: validateLessonBrief, format: formatBriefMarkdown, pathKind: 'lesson' };
+  const baseValidation = baseContract.validate(baseBrief);
   if (!baseValidation.ok) throw new Error(`base brief is invalid: ${baseValidation.errors.join('\n')}`);
   if (!matchesExpectedHash(baseBrief, expectedBaseHash)) throw manifestConflict();
 
@@ -1005,7 +1372,7 @@ function saveDraftRevisionReserved(workspace, {
   }
   if (draftJson === undefined) throw new Error('candidate brief is not canonical JSON');
   const draftBrief = JSON.parse(draftJson);
-  const validation = validateLessonBrief(draftBrief);
+  const validation = baseContract.validate(draftBrief);
   if (!validation.ok) throw new Error(`candidate brief is invalid: ${validation.errors.join('\n')}`);
 
   const pathValues = [
@@ -1031,7 +1398,7 @@ function saveDraftRevisionReserved(workspace, {
   }
 
   const allocationWorkspace = { ...workspace, manifest: persistedManifest };
-  const allocated = nextBriefPaths(allocationWorkspace, 'lesson', { fileSystem });
+  const allocated = nextBriefPaths(allocationWorkspace, baseContract.pathKind, { fileSystem });
   const jsonPath = resolveProjectPath(
     workspace.dir,
     relativeProjectPath(workspace, allocated.jsonPath),
@@ -1050,6 +1417,7 @@ function saveDraftRevisionReserved(workspace, {
   }
 
   const entry = {
+    kind: baseEntry.kind,
     revision: allocated.revision,
     jsonPath: relativeProjectPath(workspace, jsonPath),
     markdownPath: relativeProjectPath(workspace, markdownPath),
@@ -1070,7 +1438,7 @@ function saveDraftRevisionReserved(workspace, {
   const nextManifestBytes = Buffer.from(`${JSON.stringify(validatedManifest, null, 2)}\n`);
   const committedBaseHash = canonicalJsonHash(draftBrief);
   const committedManifestHash = canonicalJsonHash(validatedManifest);
-  const markdown = formatBriefMarkdown(draftBrief);
+  const markdown = baseContract.format(draftBrief);
   const stages = [];
   let manifestStage;
   let markdownStage;
@@ -1226,17 +1594,23 @@ function approveBrief(workspace, draftJsonPath, {
     const draftSnapshot = readFileSnapshot(fileSystem, draftPath);
     const draft = JSON.parse(draftSnapshot.bytes.toString('utf8'));
     if (draft.status !== 'draft') throw new Error('утвердить можно только brief со статусом draft');
-    preflightBriefBrollMedia(draft);
-    const draftValidation = validateLessonBrief(draft);
+    const briefKind = draftEntry.kind;
+    if (briefKind === 'motion-reel' && (persistedManifest.projectKind !== 'motion-reel'
+      || persistedManifest.source.mediaKind !== 'audio')) throw new Error('motion approval requires an audio project');
+    const briefContract = briefKind === 'motion-reel'
+      ? { validate: validateMotionBrief, format: formatMotionBriefMarkdown }
+      : { validate: validateLessonBrief, format: formatBriefMarkdown };
+    if (briefKind === 'lesson') preflightBriefBrollMedia(draft);
+    const draftValidation = briefContract.validate(draft);
     if (!draftValidation.ok) {
       throw new Error(`draft brief is invalid: ${draftValidation.errors.join('\n')}`);
     }
-    for (const [index, scene] of draft.scenes.entries()) {
+    for (const [index, scene] of briefKind === 'lesson' ? draft.scenes.entries() : []) {
       if (scene?.scene === 'broll' && scene.brollIntent && !scene.brollMedia && !scene.brollSrc) {
         throw new Error(`scenes[${index}].brollIntent: unresolved b-roll intent cannot be approved`);
       }
     }
-    for (const [index, scene] of draft.scenes.entries()) {
+    for (const [index, scene] of briefKind === 'lesson' ? draft.scenes.entries() : []) {
       if (scene?.scene === 'broll' && !scene.brollMedia && !isRenderableBrollSource(scene.brollSrc)) {
         throw new Error(`scenes[${index}].brollSrc: b-roll поддерживает только изображения`);
       }
@@ -1280,25 +1654,30 @@ function approveBrief(workspace, draftJsonPath, {
       status: 'approved',
       scenes: draft.scenes.map(({ brollIntent, ...scene }) => scene),
     };
-    const mediaVerification = verifyBriefBrollMedia({
-      root, workspace: persistedWorkspace, brief: draft, runToolImpl, fileSystem, platform,
-    });
+    const mediaVerification = briefKind === 'lesson'
+      ? verifyBriefBrollMedia({
+        root, workspace: persistedWorkspace, brief: draft, runToolImpl, fileSystem, platform,
+      })
+      : require('../render-media-bundle').verifyMotionBriefMedia({ root, workspace: persistedWorkspace, brief: draft, fileSystem });
     let previewVerification = null;
     try {
-      const needsPreview = mediaVerification.hasDiscovery || draft.brollReviewPolicy === 'preview-required'
+      const needsPreview = briefKind === 'motion-reel' || mediaVerification.hasDiscovery || draft.brollReviewPolicy === 'preview-required'
         || draft.scenes.some(scene => scene.brollIntent);
-      if (needsPreview) approvedBrief.brollReviewPolicy = 'preview-required';
+      if (needsPreview && briefKind === 'lesson') approvedBrief.brollReviewPolicy = 'preview-required';
       previewVerification = needsPreview
         ? require('./preview-workspace').verifyApprovalPreview(persistedWorkspace, draft, draftSnapshot.bytes, { fileSystem, confirmPreviewViewed, expectedPreviewSha256 }) : null;
-      if (previewVerification) approvedBrief.brollApproval = previewVerification.receipt;
-      const approvedValidation = validateLessonBrief(approvedBrief, { requireApproved: true });
+      if (previewVerification) approvedBrief[briefKind === 'motion-reel' ? 'approval' : 'brollApproval'] = previewVerification.receipt;
+      const approvedValidation = briefContract.validate(approvedBrief, { requireApproved: true });
       if (!approvedValidation.ok) throw new Error(`approved brief is invalid: ${approvedValidation.errors.join('\n')}`);
     } catch (error) {
       try { mediaVerification.close(); } finally { previewVerification?.close(); }
       throw error;
     }
-    const approvedMarkdown = approvedMarkdownPath ? formatBriefMarkdown(approvedBrief) : null;
+    const approvedMarkdown = approvedMarkdownPath ? briefContract.format(approvedBrief) : null;
+    const approvedJsonBytes = `${JSON.stringify(approvedBrief, null, 2)}\n`;
     const entry = {
+      kind: briefKind,
+      ...(briefKind === 'motion-reel' ? { sha256: createHash('sha256').update(approvedJsonBytes).digest('hex') } : {}),
       revision: draftEntry.revision,
       jsonPath: approvedJsonRelativePath,
       markdownPath: approvedMarkdownPath
@@ -1339,7 +1718,7 @@ function approveBrief(workspace, draftJsonPath, {
       }
       jsonStage = stageOwnedSiblingFile(
         approvedJsonPath,
-        `${JSON.stringify(approvedBrief, null, 2)}\n`,
+        approvedJsonBytes,
         { fileSystem, temporaryId, purpose: 'approval-json', platform },
       );
       stages.push(jsonStage);
@@ -1419,7 +1798,7 @@ function nextRenderPaths(workspace, label = 'render') {
     mustExist: false,
     type: 'directory',
   });
-  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(dir);
   resolveProjectPath(workspace.dir, renderDirectory, {
     label: 'next render directory',
     mustExist: true,
@@ -1476,14 +1855,108 @@ function recordRender(workspace, {
     }
     if (status === 'complete') nextManifest.latestRender = entry.dir;
     nextManifest.updatedAt = new Date().toISOString();
-    workspace.manifest = transaction.commitManifest(nextManifest, { purpose: 'render-manifest' });
+    workspace.manifest = transaction.commitManifest(nextManifest, {
+      purpose: 'render-manifest', assertCurrent: options.assertCurrent,
+    });
     return workspace;
   }, options);
+}
+
+// Guarded publication keeps the previous final until both MP4 and manifest commit.
+// Reuse owned staging and the project lease; a failed input guard rolls the MP4 back.
+function publishGuardedFinal(workspace, sourcePath, destination, {
+  fileSystem, temporaryId, publicationGuard,
+}) {
+  const directory = captureProjectDirectoryGuard(workspace.dir, destination, fileSystem, 'final publication');
+  const backupPath = `${destination}.previous-final-${safeTemporaryId(temporaryId)}`;
+  let backupIdentity = null;
+  let stage = null;
+  let stageIdentity = null;
+  let committed = false;
+  let retainBackup = false;
+  try {
+    const sourceHandle = fileSystem.openSync(sourcePath, openReadOnlyFlags(fileSystem));
+    try {
+      const sourceIdentity = fileSystem.fstatSync(sourceHandle, { bigint: true });
+      const assertSource = () => {
+        resolveProjectPath(workspace.dir, relativeProjectPath(workspace, sourcePath), {
+          fileSystem, mustExist: true, type: 'file',
+        });
+        for (const stat of [fileSystem.fstatSync(sourceHandle, { bigint: true }), fileSystem.lstatSync(sourcePath, { bigint: true })]) {
+          if (!stat.isFile() || stat.isSymbolicLink()
+            || ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs', 'nlink'].some(key => stat[key] !== sourceIdentity[key])) {
+            throw new Error('render final source identity changed');
+          }
+        }
+      };
+      stage = stageOwnedSiblingFile(destination, null, {
+        fileSystem, temporaryId, purpose: 'final', assertParentCurrent: directory.assertCurrent,
+        verifyPublishedIdentity: true,
+        writeToHandle(handle) { assertSource(); copyOpenedFile(fileSystem, sourceHandle, handle); assertSource(); },
+      });
+      stageIdentity = fileSystem.lstatSync(stage.path);
+    } finally { fileSystem.closeSync(sourceHandle); }
+
+    directory.assertCurrent();
+    const previous = lstatIfPresent(fileSystem, destination);
+    if (previous) {
+      if (!previous.isFile() || previous.isSymbolicLink()) throw new Error('previous final must be regular');
+      fileSystem.linkSync(destination, backupPath);
+      backupIdentity = fileSystem.lstatSync(backupPath);
+      if (!sameFileIdentity(previous, backupIdentity)
+        || !sameFileIdentity(backupIdentity, fileSystem.lstatSync(destination))) {
+        throw new Error('previous final identity changed');
+      }
+    }
+    // MP4 staging/fsync and all digest reads precede the final shared identity barrier.
+    publicationGuard.assertCurrent();
+    publicationGuard.assertIdentity();
+    stage.commitReplace();
+    publicationGuard.assertIdentity();
+    // The callback commits the manifest with the same guard after its own staging/fsync.
+    publicationGuard.onCommit();
+    committed = true;
+    return destination;
+  } catch (error) {
+    try {
+      directory.assertCurrent();
+      const current = lstatIfPresent(fileSystem, destination);
+      const ownsCurrent = current && stageIdentity && !current.isSymbolicLink()
+        && sameFileIdentity(stageIdentity, current);
+      if (ownsCurrent || (!current && backupIdentity)) {
+        if (backupIdentity) {
+          const backup = lstatIfPresent(fileSystem, backupPath);
+          if (!backup || backup.isSymbolicLink() || !sameFileIdentity(backupIdentity, backup)) {
+            throw new Error('previous final backup identity changed; rollback refused');
+          }
+          fileSystem.renameSync(backupPath, destination);
+          backupIdentity = null;
+        } else stage.removeCommitted();
+      } else if (backupIdentity && (!current || !sameFileIdentity(backupIdentity, current))) {
+        throw new Error('foreign final identity; rollback refused');
+      }
+    } catch (rollbackError) {
+      retainBackup = true;
+      error.rollbackError = rollbackError;
+    }
+    throw error;
+  } finally {
+    const cleanup = () => {
+      stage?.cleanupTemp();
+      if (backupIdentity && !retainBackup) {
+        const backup = lstatIfPresent(fileSystem, backupPath);
+        if (backup && !backup.isSymbolicLink() && sameFileIdentity(backupIdentity, backup)) fileSystem.unlinkSync(backupPath);
+      }
+    };
+    if (committed) { try { cleanup(); } catch (_) { /* committed final/manifest; retain owned cleanup evidence */ } }
+    else cleanup();
+  }
 }
 
 function publishFinal(workspace, renderFinalPath, {
   fileSystem = fs,
   temporaryId = randomUUID,
+  publicationGuard = null,
 } = {}) {
   const sourceRelativePath = relativeProjectPath(workspace, path.resolve(renderFinalPath));
   const sourcePath = resolveProjectPath(workspace.dir, sourceRelativePath, {
@@ -1497,6 +1970,9 @@ function publishFinal(workspace, renderFinalPath, {
     fileSystem,
     mustExist: false,
   });
+  if (publicationGuard) {
+    return publishGuardedFinal(workspace, sourcePath, destination, { fileSystem, temporaryId, publicationGuard });
+  }
   const temporaryPath = `${destination}.tmp-${temporaryId()}`;
   let temporaryHandle = null;
   fileSystem.mkdirSync(path.dirname(destination), { recursive: true });
@@ -1516,6 +1992,7 @@ function publishFinal(workspace, renderFinalPath, {
 
 function runRenderLifecycle(workspace, render, operation, {
   publish = publishFinal,
+  publicationGuard = null,
 } = {}) {
   if (!workspace) return operation();
   const metadata = {
@@ -1529,6 +2006,18 @@ function runRenderLifecycle(workspace, render, operation, {
     recordRender(workspace, { ...metadata, status: 'started' }, options);
     try {
       const renderFinalPath = operation();
+      if (publicationGuard) {
+        return publish(workspace, renderFinalPath, {
+          publicationGuard: {
+            ...publicationGuard,
+            onCommit() {
+              recordRender(workspace, { ...metadata, status: 'complete' }, {
+                ...options, assertCurrent: publicationGuard.assertCurrent,
+              });
+            },
+          },
+        });
+      }
       const destination = publish(workspace, renderFinalPath);
       recordRender(workspace, { ...metadata, status: 'complete' }, options);
       return destination;
@@ -1546,6 +2035,8 @@ function runRenderLifecycle(workspace, render, operation, {
 module.exports = {
   acquireProjectMutationLease,
   approveBrief,
+  captureProjectDirectoryGuard,
+  copyProjectFileNoReplace,
   createOrOpenProject,
   formatProjectId,
   nextBriefPaths,
@@ -1558,6 +2049,7 @@ module.exports = {
   resolveProjectPath,
   runRenderLifecycle,
   saveDraftRevision,
+  stageOwnedSiblingFile,
   slugifyProjectName,
   validateProjectManifest,
   withProjectMutation,

@@ -4,7 +4,16 @@
 //        [--gain -14] [--threshold 0.04] [--ratio 8] [--attack 5] [--release 300]
 //        [--start 0] [--rate 1] [--fade-in 0] [--fade-out 0] [--duration 60]
 const { finiteNumber, optionValue } = require('./build-options');
+const { LOUDNORM_FILTER } = require('./finish-audio');
 const { hostPath, runTool } = require('./process');
+
+// Формат обеих веток микса (голос [v] и музыка [m]); его же применяет к голосу замер G8. Граф баланса
+// остаётся на 44,1 кГц: на 48 кГц ffmpeg 6 с -shortest терял последние ~0,1 с музыки под концом видео
+// (tests/qa-mix-gates.test.js «exactly what the preview mix adds»). На выход микс отдаёт 48 кГц –
+// тот же контракт, что у finish.js (-ar 48000): см. MIX_OUTPUT_FORMAT и buildMixFilter.
+const MIX_AUDIO_FORMAT = 'aformat=sample_rates=44100:channel_layouts=stereo';
+const MIX_AUDIO_RATE = 48000;
+const MIX_OUTPUT_FORMAT = `aformat=sample_rates=${MIX_AUDIO_RATE}:channel_layouts=stereo`;
 
 function numberOption(args, name, fallback, range) {
   return finiteNumber(optionValue(args, name, fallback), `--${name}`, range);
@@ -30,7 +39,10 @@ function parseMixOptions(args) {
   return options;
 }
 
-function buildMusicFilter(options) {
+// stem: 'music' – только музыка после того же sidechain, без смешивания с голосом: по ней G8
+// (scripts/qa/mix-gates.js) меряет баланс голоса и музыки. Обычный граф от stem не зависит.
+function buildMusicFilter(options, { stem = null } = {}) {
+  if (stem !== null && stem !== 'music') throw new Error(`buildMusicFilter: stem может быть только 'music', получено «${stem}»`);
   const musicFilters = [];
   if (options.start > 0) musicFilters.push(`atrim=start=${options.start}`, 'asetpts=PTS-STARTPTS');
   if (options.rate !== 1) musicFilters.push(`atempo=${options.rate}`);
@@ -41,14 +53,35 @@ function buildMusicFilter(options) {
     musicFilters.push(`afade=t=out:st=${fadeStart}:d=${options.fadeOut}`);
   }
 
-  const audioFormat = 'aformat=sample_rates=44100:channel_layouts=stereo';
+  const audioFormat = MIX_AUDIO_FORMAT;
   musicFilters.push(audioFormat);
+  const sidechain = `sidechaincompress=threshold=${options.threshold}:ratio=${options.ratio}:attack=${options.attack}:release=${options.release}:level_sc=1`;
+  if (stem === 'music') {
+    return [`[1:a]${musicFilters.join(',')}[m]`, `[0:a]${audioFormat}[sc]`, `[m][sc]${sidechain}[aout]`].join(';');
+  }
   return [
     `[1:a]${musicFilters.join(',')}[m]`,
     `[0:a]${audioFormat},asplit=2[v][sc]`,
-    `[m][sc]sidechaincompress=threshold=${options.threshold}:ratio=${options.ratio}:attack=${options.attack}:release=${options.release}:level_sc=1[duck]`,
+    `[m][sc]${sidechain}[duck]`,
     '[v][duck]amix=inputs=2:duration=first:normalize=0,apad[aout]',
   ].join(';');
+}
+
+// Граф, который пишет mix-music.js (#43): тот же микс, что buildMusicFilter (по нему меряет баланс G8), а
+// после смешивания – повторная нормализация финиша (LOUDNORM_FILTER из finish-audio.js: −14 LUFS,
+// true peak −1,5 dBTP) и 48 кГц. Без неё музыка под голосом поднимала громкость выше −14 LUFS, а
+// loudnorm сам выдаёт 192 кГц – поэтому формат приводится к 48 кГц до apad.
+function buildMixFilter(options) {
+  const graph = buildMusicFilter(options);
+  const tail = 'amix=inputs=2:duration=first:normalize=0,apad[aout]';
+  if (!graph.endsWith(tail)) throw new Error('buildMixFilter: неожиданный граф микса');
+  return `${graph.slice(0, -tail.length)}amix=inputs=2:duration=first:normalize=0,${LOUDNORM_FILTER},${MIX_OUTPUT_FORMAT},apad[aout]`;
+}
+
+// Входы микса: 0 – видео с голосом, 1 – музыка по кругу. Их же берёт замер G8, чтобы музыка в
+// замере была той же, что в preview.
+function mixMusicInputArgs(video, music) {
+  return ['-i', hostPath(video), '-stream_loop', '-1', '-i', hostPath(music)];
 }
 
 function mixMusicCommand(video, music, output, filter) {
@@ -56,15 +89,14 @@ function mixMusicCommand(video, music, output, filter) {
     command: 'ffmpeg',
     args: [
       '-y',
-      '-i', hostPath(video),
-      '-stream_loop', '-1',
-      '-i', hostPath(music),
+      ...mixMusicInputArgs(video, music),
       '-filter_complex', filter,
       '-map', '0:v',
       '-map', '[aout]',
       '-c:v', 'copy',
       '-c:a', 'aac',
       '-b:a', '160k',
+      '-ar', String(MIX_AUDIO_RATE),
       '-shortest',
       '-movflags', '+faststart',
       hostPath(output),
@@ -72,19 +104,21 @@ function mixMusicCommand(video, music, output, filter) {
   };
 }
 
-function main(args = process.argv.slice(2)) {
+function main(args = process.argv.slice(2), { runToolImpl = runTool, log = console.log } = {}) {
   const [video, music, output] = args;
   if (!video || !music || !output) throw new Error('укажи video, music и output');
   const options = parseMixOptions(args);
-  const filter = buildMusicFilter(options);
-  console.log(`музыка ${options.gain}dB + ducking (thr=${options.threshold} ratio=${options.ratio}); длина по видео`);
+  const filter = buildMixFilter(options);
+  log(`музыка ${options.gain}dB + ducking (thr=${options.threshold} ratio=${options.ratio}); `
+    + 'после микса loudnorm −14 LUFS, 48 кГц; длина по видео');
   if (options.dryRun) {
-    console.log(filter);
-    return;
+    log(filter);
+    return null;
   }
   const command = mixMusicCommand(video, music, output, filter);
-  runTool(command.command, command.args, { stage: 'music mix' });
-  console.log(`✅ ${output}`);
+  runToolImpl(command.command, command.args, { stage: 'music mix' });
+  log(`✅ ${output}`);
+  return command;
 }
 
 if (require.main === module) {
@@ -97,8 +131,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  MIX_AUDIO_FORMAT,
+  MIX_AUDIO_RATE,
+  buildMixFilter,
   buildMusicFilter,
   main,
   mixMusicCommand,
+  mixMusicInputArgs,
   parseMixOptions,
 };

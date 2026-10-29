@@ -1,14 +1,23 @@
 # Шаблоны монтажа (Templates)
 
 Движок собирает ролик по ВЫБРАННОМУ шаблону. Шаблон = композиция (layout) + тема (стиль).
-Формат наследуется от исходника, если не сказано иначе.
+Для lesson формат наследуется от видео, если не сказано иначе. У audio-only `motion-reel`
+свой стандарт: 1080×1920 и 30 FPS.
 
 Для первого монтажа без технических деталей начни с
 [«Монтаж от видео до готового MP4»](MONTAGE-GUIDE.md). Этот каталог нужен, когда уже требуется
 выбрать конкретный шаблон, сцену или тему.
 
+В новом чате достаточно передать видео и написать «смонтируй». Агент обязан сначала показать
+карточку выбора: **Уникальный Creative Motion** (рекомендуется), **Готовый стиль** или
+**По референсу**. Готовый стиль выбирается только из реально доступных тем ниже и `THEMES_EXT`.
+Creative Motion не является ещё одним шаблоном: агент создаёт новую ДНК дизайна и project-local
+Remotion-композиции под смысл конкретного ролика, а общий движок сохраняет approval, глобальный
+таймкод, safe-zone и QA. Полные правила: [Creative Motion](../skills/reel-turnkey/references/creative-motion.md).
+
 Как выбрать шаблон при монтаже: скажи агенту тип ролика и стиль, либо укажи флагом
-`--template <id>` (и `--theme <id>` для скина). Ниже каталог открытых шаблонов со скринами.
+`--template lesson` (и `--theme <id>` для скина). Motion запускается отдельной командой
+`automontage motion`, а не флагом `--template motion-reel`.
 
 Запускай только одну сборку на checkout. Каждый lesson render получает owner-only media root
 в `os.tmpdir()`, который Remotion получает отдельным абсолютным `--public-dir`; props сохраняют
@@ -22,7 +31,62 @@
 
 ---
 
+
+### Рабочее качество перед motion-слоем
+
+Перед `automontage layer new` соберите `automontage master --project-dir projects/<id>
+--edit edit/vNN-source.json`. По умолчанию `--quality 1080p` уменьшает короткую сторону до
+1080, сохраняя пропорции и FPS; маленькие исходники не увеличиваются. Для родного размера
+(включая 4K) явно задайте `--quality source` (алиасы `4k`, `native`). Нечётная сторона
+без уменьшения округляется вниз на один пиксель: кодировщику нужны чётные размеры.
+Если нарезка не нужна, агент создаёт source-edit с одним `keep` на всю запись по границам
+кадров и с текущей `sourceRevision`. После master используйте активный `source.localPath`
+и соответствующий `transcript.words` из `project.json`. Master не меняет оригинал.
+
+Слой наследует размер рабочего исходника. Старый 4K-слой после нового 1080p master нужно
+пересобрать через `layer new`: G6 остановит размер, не совпадающий с активным исходником.
+Preview ограничивает длинную сторону 1920: для 1080×1920 масштаб 1, для 2160×3840 – 0,5.
+Preview, собранные раньше в половину композиции, остаются действительными: утверждение
+принимает и прежний размер, пересобирать их не нужно. Утверждённые версии не переписываются.
+
 ## Открытые шаблоны (в этом репозитории)
+
+### Motion-reel :: Анимационный ролик без камеры
+
+Композиция `MotionReel`, тема `motion-neutral`, аудио вместо говорящей головы. Сцены:
+`kinetic-title`, `card`, `steps`, `list`, `counter`, `media`, `cta`, `chart` – отдельный набор,
+не варианты lesson. Полоса субтитров по умолчанию выключена; optional `caption` задаётся в brief.
+Лимиты полей и media/audioMode описаны в [каталоге](SCENE-CATALOG.md#motionreel-восемь-сцен-без-камеры).
+
+```bash
+automontage motion narration.mp3 --project "Анимационный ролик"
+automontage preview --project-dir projects/<id> --brief brief/vNN-draft.motion.json
+node scripts/project/approve-brief.js projects/<id> brief/vNN-draft.motion.json --confirm-preview-viewed
+automontage motion --project-dir projects/<id> --brief brief/vNN-approved.motion.json --version-label reviewed
+```
+
+Между инициализацией и preview агент по локальному transcript публикует полный timed brief;
+между preview и approval пользователь смотрит полный ролик и явно утверждает эту версию.
+`<id>`/`vNN` – пути фактической ревизии, `node scripts/...` выполняется из корня движка.
+Preview – настоящий Remotion с watermark; final принимает только текущий approved JSON и
+проверенные hashes. Motion Review пока read-only. Готовое аудио не требует provider-ключей,
+ElevenLabs – отдельная опция с согласованным текстом/голосом и `--accept-provider-cost`.
+Текст отправляется провайдеру; ключ/voice ID/кэш остаются приватными, неоднозначный сбой
+не повторяется автоматически. [Полный навык](../skills/motion-reel/SKILL.md) описывает consent,
+таймкоды, QA и повторные правки. Офлайн-тест: `automontage demo --motion` – только draft,
+с тестовыми тонами вместо речи. Расписание и автопубликация относятся к будущему отдельному слою.
+
+Ролик без речи (музыкальное промо) запускается явным флагом, источник – готовый саундтрек:
+
+```bash
+automontage motion soundtrack.wav --project "Промо" --music-only
+automontage motion --project-dir projects/<id> --music-only   # продолжить созданную папку
+```
+
+Whisper не запускается, transcript пустой, brief получает `audioRole: "music"`; preview,
+approval и final те же. Флаг несовместим с `--model`, `--brief`, `--version-label`, `--script`,
+`--voice`, `--voice-id`, `--accept-provider-cost`. Без браузера preview запускается с `--no-open`. Маршрут с генерацией кадров и project-local слоем –
+[навык ai-promo](../skills/ai-promo/SKILL.md).
 
 ### 1. lesson-presentation :: Урок / эфир (9:16 / 16:9)
 Режиссёр выбирает раскладку из 7 готовых сцен и заполняет её дословными фразами,
@@ -38,7 +102,8 @@
 - Композиция: `ReelScenes` · Публичная тема: `lesson-neutral`
 - Если `--theme` не задан, lesson автоматически использует `lesson-neutral`; Dynamic
   по-прежнему использует `craft`.
-- По умолчанию `--aspect source`: ширина, высота и FPS равны исходнику.
+- По умолчанию `--aspect source`: ширина, высота и FPS равны активному исходнику
+  (после `master` – рабочему размеру 1080p; `--quality source` сохраняет родной размер).
 - `--aspect vertical`: 1080x1920 с FPS исходника.
 - `--aspect horizontal`: 1920x1080 с FPS исходника.
 - `--face-x`, `--face-y` и `--face-zoom` фиксируют проверенное кадрирование спикера в ТЗ.
@@ -64,7 +129,10 @@ provider-скрипт `scripts/gen-brief.js` остаётся только яв�
 запускаться обычным навыком `reel-turnkey`.
 
 Если нужно сначала вырезать паузы или неудачные дубли, создай frame-aligned
-`edit/v02-source.json` и выполни до новой режиссуры:
+`edit/v02-source.json` и выполни до новой режиссуры. Для своей съёмки с речью список кусков сначала
+показывают автору черновой нарезкой (`automontage roughcut`, порядок –
+[`rough-cut.md`](../skills/reel-turnkey/references/rough-cut.md)), и master собирается после
+«Нарезка готова»:
 
 ```bash
 automontage master --project-dir projects/YYYY.MM.DD_<slug> \
@@ -74,6 +142,12 @@ automontage master --project-dir projects/YYYY.MM.DD_<slug> \
 Оригинал не меняется: публикуются новая source revision и пересчитанный transcript без повторного
 Whisper. Старый draft остаётся историей и не подходит для нового master; следующий draft должен
 ссылаться на активную source revision.
+
+Если ролик записан несколькими дублями, вместо `edit/vNN-source.json` используй
+`edit/vNN-takes.json`: сначала `automontage takes add --project-dir <проект> --file <дубль>` и
+`automontage takes pack --project-dir <проект>`, затем тот же `automontage master`. Master
+собирает лучшие куски разных дублей в новую source revision; формат описан в README и
+`schema/takes-edit.schema.json`.
 
 При необходимости draft можно проверить локально до утверждения:
 
@@ -96,8 +170,11 @@ automontage preview --project-dir projects/2026.08.20_demo \
 ```
 
 Для фрагмента добавь парные `--from-sec N --to-sec N`. В интерфейсе всегда показывается
-`ПОЛНЫЙ РОЛИК` либо точный диапазон фрагмента. Preview помечен «ЧЕРНОВИК», имеет пониженное
-качество и не даёт draft права на финальный render.
+`ПОЛНЫЙ РОЛИК` либо точный диапазон фрагмента. Полный preview в масштабе 1 собирается в качестве
+финала без вшитой надписи – «ЧЕРНОВИК» рисуют плееры пульта и Review, пока brief не утверждён;
+после утверждения этот файл копируется в финал без рендера (D-051). Фрагмент и 4K помечены
+«ЧЕРНОВИК» в кадре и имеют пониженное качество. Сам preview не даёт draft права на финальный
+render: финал появляется только после явного утверждения.
 
 Возможности семи официальных сцен, допустимые варианты и обязательные проверки собраны в
 [каталоге сцен](SCENE-CATALOG.md). Там же зафиксировано: screencast - это настоящее video,
@@ -190,6 +267,9 @@ Normalized video добавляет старт и звук:
   возможной обрезкой краёв.
 - `showSpeakerPip: false` оставляет b-roll единственным видео на весь кадр. Если ключ не задан,
   поверх b-roll сохраняется стандартное окно спикера для обратной совместимости.
+- `overlay: "none"` внутри `brollMedia` показывает файл ровно как отрендерено: без затемнения,
+  нижнего градиента, чипа, заголовка с подписью и окна спикера. Это режим для полноэкранного
+  слоя со своим текстом; без поля или с `"default"` оформление прежнее.
 - `audioMode: "mute"` оставляет исходный голос; `mix` добавляет звук клипа на −18 dB;
   `replace` заменяет исходный голос только внутри сцены с короткой огибающей на стыках.
 - У silent video разрешён только `mute`.
@@ -218,6 +298,9 @@ node scripts/build.js \
   --brief brief/v01-approved.lesson.json \
   --version-label first-render
 ```
+
+После `automontage master` вместо `input/source.mp4` передай активный `source.localPath` из
+`project.json`.
 
 На втором этапе LLM-ключ и повторная транскрибация не нужны. Движок проверяет статус,
 тот же исходник, утверждённые тему и аспект, затем передаёт `faceSrc` и `audioSrc` в
@@ -305,3 +388,26 @@ node scripts\build.js видео.mp4 --theme <theme-id>
 
 Точный адрес приватного репо и id дефолтного стиля пользователь хранит у себя (в памяти
 агента или в README своего бренд-пака) – в этот открытый репозиторий они не пишутся.
+
+
+## MotionReel: монтаж из narration
+
+`automontage motion narration.wav --project "Название"` создаёт audio workspace и локальный
+транскрипт со scaffold `brief/v01-draft.motion.json`. Агент заполняет его сценами `kinetic-title`,
+`card`, `steps`, `list`, `counter`, `media`, `cta`, затем проходит preview → явный полный просмотр
+→ `approve-brief.js --confirm-preview-viewed` → `automontage motion --project-dir … --brief …`.
+Полная последовательность команд – в README, раздел «Motion Reel из готовой озвучки».
+
+Схема `schema/motion-brief.schema.json` отдельна от lesson. `source`, `media.src` и `music.file`
+ссылаются только на относительные файлы внутри workspace. Для media и music обязателен `sha256`.
+Опциональная `music` принимает `gainDb`, fade/start/playbackRate/ducking как lesson и микшируется
+через тот же FFmpeg pipeline. Готовый маршрут использует `motion-neutral`; Creative Motion может
+подключить новый project-local полноразмерный слой через проверенную `media`-сцену с выключенным
+звуком и `frame: "full"` (клип на весь кадр без рамки и зума сцены; без поля – `card`). Камера и `faceSrc` отсутствуют. Утверждённая копия и просмотр криптографически связаны с озвучкой; новая правка требует
+нового draft и полного preview. В motion Review пока доступны просмотр/таймлайн, правки – через агента.
+
+Поле `audioRole` brief равно `narration` (по умолчанию, если поля нет) или `music`. При `music`
+источник – смешанный саундтрек без речи (`automontage motion <audio> --music-only`), transcript
+пустой, а `music` в brief запрещено: дополнительная музыка смешивается в сам источник. Markdown
+brief показывает строку «Аудио: музыка без речи (источник – саундтрек)». Старые brief без поля
+не меняются.

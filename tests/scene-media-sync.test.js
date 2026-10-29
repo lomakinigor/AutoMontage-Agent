@@ -8,6 +8,10 @@ const {
   Internals, Sequence: InstalledSequence, interpolate: installedInterpolate,
 } = require('remotion');
 const { buildSync } = require('esbuild');
+// Remotion 4.0.536: Sequence вызывает useVideoConfig, поэтому нужен VideoContext с конфигом композиции.
+const { VideoContext } = require(
+  path.join(path.dirname(require.resolve('remotion/package.json')), 'dist/cjs/use-video.js'),
+);
 
 const ROOT = path.join(__dirname, '..');
 
@@ -45,6 +49,8 @@ function renderInstalledSequence({ frame, sequenceProps }) {
     sequenceProps,
     React.createElement('span', { 'data-scene-mounted': 'yes' }, 'scene'),
   );
+  const videoConfig = { ...composition };
+  element = React.createElement(VideoContext.Provider, { value: videoConfig }, element);
   element = React.createElement(Internals.RemotionEnvironmentContext.Provider, { value: environment }, element);
   element = React.createElement(Internals.TimelineContext.Provider, { value: timeline }, element);
   element = React.createElement(Internals.AbsoluteTimeContext.Provider, { value: timeline }, element);

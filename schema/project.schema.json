@@ -7,6 +7,7 @@
   "required": ["version", "id", "name", "slug", "createdAt", "updatedAt", "source", "transcript", "briefs", "renders", "currentBrief", "latestRender", "final"],
   "properties": {
     "version": {"const": 1},
+    "projectKind": {"enum": ["video", "motion-reel"]},
     "id": {"type": "string", "minLength": 1},
     "name": {"type": "string", "minLength": 1},
     "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
@@ -17,6 +18,7 @@
       "additionalProperties": false,
       "required": ["originalPath", "originalLocalPath", "localPath", "revision", "history"],
       "properties": {
+        "mediaKind": {"enum": ["video", "audio"]},
         "originalPath": {"type": "string", "minLength": 1},
         "originalLocalPath": {"$ref": "#/definitions/projectPath"},
         "localPath": {"$ref": "#/definitions/projectPath"},
@@ -46,6 +48,21 @@
         "captions": {"$ref": "#/definitions/projectPath"}
       }
     },
+    "takes": {
+      "type": "array",
+      "maxItems": 99,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "originalPath", "localPath", "transcriptPath"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^take-(0[1-9]|[1-9][0-9])$"},
+          "originalPath": {"type": "string", "minLength": 1},
+          "localPath": {"$ref": "#/definitions/projectPath"},
+          "transcriptPath": {"$ref": "#/definitions/projectPath"}
+        }
+      }
+    },
     "briefs": {
       "type": "array",
       "items": {
@@ -53,6 +70,8 @@
         "additionalProperties": false,
         "required": ["revision", "jsonPath", "markdownPath", "status", "theme", "aspect"],
         "properties": {
+          "kind": {"enum": ["lesson", "motion-reel"]},
+          "sha256": {"type":"string","pattern":"^[a-f0-9]{64}$"},
           "revision": {"type": "integer", "minimum": 1},
           "status": {"enum": ["draft", "approved"]},
           "jsonPath": {"$ref": "#/definitions/projectPath"},
@@ -81,7 +100,34 @@
             "generatedAt": {"type": "string", "minLength": 1},
             "briefSha256": {"type":"string","pattern":"^[a-f0-9]{64}$"},
             "sourceSha256": {"type":"string","pattern":"^[a-f0-9]{64}$"},
-            "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+            "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "quality": {"enum": ["final", "draft"]}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "roughCut": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["editPath", "filePath", "sourceRevision", "sourceDuration", "editSha256", "sha256", "duration", "width", "height", "fps", "createdAt", "status"],
+          "properties": {
+            "editPath": {"$ref": "#/definitions/projectPath"},
+            "filePath": {"$ref": "#/definitions/projectPath"},
+            "sourceRevision": {"type": "integer", "minimum": 1},
+            "sourceDuration": {"type": "number", "exclusiveMinimum": 0},
+            "editSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "duration": {"type": "number", "exclusiveMinimum": 0},
+            "width": {"type": "integer", "minimum": 1},
+            "height": {"type": "integer", "minimum": 1},
+            "fps": {"type": "number", "exclusiveMinimum": 0},
+            "createdAt": {"type": "string", "minLength": 1},
+            "status": {"enum": ["review", "confirmed"]},
+            "confirmedAt": {"type": "string", "minLength": 1},
+            "confirmedBy": {"enum": ["pult", "chat"]}
           }
         },
         {"type": "null"}
@@ -98,7 +144,9 @@
           "label": {"type": "string", "minLength": 1},
           "dir": {"$ref": "#/definitions/projectPath"},
           "briefPath": {"anyOf": [{"$ref": "#/definitions/projectPath"}, {"type": "null"}]},
-          "status": {"enum": ["started", "complete", "failed"]}
+          "status": {"enum": ["started", "complete", "failed"]},
+          "source": {"enum": ["render", "preview"]},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
         }
       }
     },

@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://automontage.local/schema/critic-report.schema.json",
+  "title": "AutoMontage Critic Report",
+  "description": "Входной отчёт критика. Сохранённый qa/critic-NN.json - обёртка {report, decision}: round в ней пересчитывает команда automontage critic по цепочке кругов, поэтому в сохранённом отчёте он может отличаться от входного.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "round", "scenes", "summary"],
+  "oneOf": [
+    {
+      "description": "Новый формат: предмет отчёта и его sha256. stills - inputsSha256 последнего индекса qa/moments-stills-*.json, preview - sha256 текущего preview.",
+      "required": ["subject", "subjectSha256"],
+      "not": { "required": ["previewSha256"] }
+    },
+    {
+      "description": "Старый формат: previewSha256 - синоним subject: preview.",
+      "required": ["previewSha256"],
+      "not": { "anyOf": [{ "required": ["subject"] }, { "required": ["subjectSha256"] }] }
+    }
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "subject": { "enum": ["preview", "stills"] },
+    "subjectSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "previewSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/scene" }
+    },
+    "summary": { "type": "string", "minLength": 1 }
+  },
+  "definitions": {
+    "score": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "fromSec", "toSec", "scores", "issues"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1 },
+        "fromSec": { "type": "number", "minimum": 0 },
+        "toSec": { "type": "number", "exclusiveMinimum": 0 },
+        "scores": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["idea", "composition", "motion", "typography", "rhythm"],
+          "properties": {
+            "idea": { "$ref": "#/definitions/score" },
+            "composition": { "$ref": "#/definitions/score" },
+            "motion": { "$ref": "#/definitions/score" },
+            "typography": { "$ref": "#/definitions/score" },
+            "rhythm": { "$ref": "#/definitions/score" }
+          }
+        },
+        "issues": {
+          "description": "У сцены с оценкой ниже 9 нужна минимум одна правка (проверяет scripts/qa/critic.js).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text", "fix"],
+            "properties": {
+              "text": { "type": "string", "minLength": 1 },
+              "fix": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

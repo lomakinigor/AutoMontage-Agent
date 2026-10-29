@@ -8,6 +8,7 @@ const path = require('node:path');
 const {
   prepareRenderMediaBundle,
   withPreviewMediaBundle,
+  withPreviewMediaBundleAsync,
   withRenderMediaBundle,
 } = require('../scripts/render-media-bundle');
 
@@ -838,6 +839,41 @@ test('a draft acquires only an ephemeral preview media bundle', (t) => {
   assert.equal(result, 'previewed');
   assert.equal(fs.existsSync(directory), false);
   assert.equal(fs.existsSync(publicDirectory), false);
+});
+
+test('async preview bundle keeps the lease until the promise settles and cleans on success and failure', async (t) => {
+  const fixture = makeFixture(t);
+  const draftInput = () => {
+    const input = bundleInput(fixture, []);
+    input.previewBrief = { ...input.approvedBrief, status: 'draft' };
+    delete input.approvedBrief;
+    input.props.draftPreview = true;
+    return input;
+  };
+  let directory;
+  const result = await withPreviewMediaBundleAsync(draftInput(), async (lease) => {
+    directory = lease.directory;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fs.existsSync(directory), true, 'lease жив после await');
+    return 'stills';
+  });
+  assert.equal(result, 'stills');
+  assert.equal(fs.existsSync(directory), false);
+
+  let failedDirectory;
+  await assert.rejects(withPreviewMediaBundleAsync(draftInput(), async (lease) => {
+    failedDirectory = lease.directory;
+    await new Promise((resolve) => setImmediate(resolve));
+    throw new Error('still boom');
+  }), /still boom/);
+  assert.equal(fs.existsSync(failedDirectory), false);
+
+  await assert.rejects(withPreviewMediaBundleAsync(draftInput(), () => { throw new Error('sync boom'); }), /sync boom/);
+  await assert.rejects(withPreviewMediaBundleAsync(draftInput(), () => {}, () => {}), /unsupported/);
+  const approved = bundleInput(fixture, []);
+  approved.previewBrief = approved.approvedBrief;
+  delete approved.approvedBrief;
+  await assert.rejects(withPreviewMediaBundleAsync(approved, async () => {}), /draft/i);
 });
 
 test('preview bundle rejects approved briefs and render bundle still rejects drafts', (t) => {

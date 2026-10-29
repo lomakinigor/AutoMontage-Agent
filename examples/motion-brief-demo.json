@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "kind": "motion-reel",
+  "status": "draft",
+  "source": "input/narration.wav",
+  "theme": "motion-neutral",
+  "title": "Нейтральное motion-демо",
+  "output": {
+    "aspect": "vertical",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationInFrames": 900
+  },
+  "scenes": [
+    {
+      "scene": "kinetic-title",
+      "text": "Идея приходит в движение",
+      "start": 0,
+      "end": 3
+    },
+    {
+      "scene": "card",
+      "title": "Одна мысль",
+      "body": "Каждая сцена объясняет один простой тезис.",
+      "start": 3,
+      "end": 6
+    },
+    {
+      "scene": "steps",
+      "title": "Порядок действий",
+      "steps": [
+        "Придумать",
+        "Проверить",
+        "Собрать"
+      ],
+      "start": 6,
+      "end": 11
+    },
+    {
+      "scene": "list",
+      "title": "Что проверить",
+      "items": [
+        "Понятный заголовок",
+        "Читаемый текст",
+        "Спокойный ритм",
+        "Ясный следующий шаг"
+      ],
+      "start": 11,
+      "end": 18
+    },
+    {
+      "scene": "counter",
+      "label": "Типов сцен в этом демо",
+      "value": 8,
+      "start": 18,
+      "end": 21
+    },
+    {
+      "scene": "media",
+      "overlayText": "Нейтральная геометрия",
+      "media": {
+        "kind": "image",
+        "src": "assets/neutral.png",
+        "sha256": "31c8298a0e61559cd193ff2e68973b9c6b2904f110cdc5adc538ae932590be6d",
+        "fit": "contain"
+      },
+      "start": 21,
+      "end": 24
+    },
+    {
+      "scene": "cta",
+      "title": "Проверьте результат",
+      "action": "Посмотрите полный черновик",
+      "start": 24,
+      "end": 27
+    },
+    {
+      "scene": "chart",
+      "title": "Рост по этапам",
+      "chartType": "bar-to-line",
+      "unit": "баллов",
+      "highlight": 2,
+      "points": [
+        {
+          "label": "Идея",
+          "value": 12
+        },
+        {
+          "label": "Сборка",
+          "value": 28
+        },
+        {
+          "label": "Показ",
+          "value": 45
+        }
+      ],
+      "start": 27,
+      "end": 30
+    }
+  ]
+}

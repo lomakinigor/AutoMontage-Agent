@@ -28,11 +28,11 @@ export const CounterCard = ({ label = 'ВСЕГО ЛИШЬ', value = 5, unit = '
         background: t.colors.accent,
         boxShadow: glowText(t, t.colors.accent) !== 'none' ? `0 0 20px ${t.colors.accent}` : 'none',
       }} />
-      <div style={{
+      <div data-qa-text="counter-label" style={{
         fontFamily: t.fonts.mono, fontWeight: 700, fontSize: 22, letterSpacing: 3,
         color: t.colors.accentDark, paddingLeft: 14, textShadow: glowText(t, t.colors.accent),
       }}>{label}</div>
-      <div style={{
+      <div data-qa-text="counter-value" style={{
         fontFamily: t.fonts.display, fontWeight: 700, fontSize: 150, lineHeight: 0.9,
         color: t.colors.text, paddingLeft: 14, display: 'flex', alignItems: 'baseline', gap: 18,
         transform: `scale(${scale})`, transformOrigin: 'left center',

@@ -1,8 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { chromium } = require('playwright');
 const { expect } = require('playwright/test');
 const {
@@ -11,7 +12,21 @@ const {
   readProjectManifest,
 } = require('../scripts/project/workspace');
 const { startReviewServer } = require('../scripts/review/server');
+const { finalizeApproval } = require('../scripts/project/approve-final');
+const { resolveRemotionCommand } = require('../scripts/env');
 const ROOT = path.resolve(__dirname, '..');
+// Ждём само preview-задание, а не косвенный признак в интерфейсе: сбой виден сразу и с причиной.
+const PREVIEW_JOB_TIMEOUT_MS = 180000;
+// Хвост вывода preview.js. Если процесс уже закрылся, сначала дожидаемся записи лога до конца.
+async function outputTail(log) {
+  if (!log) return '(preview.js не запускался)';
+  if (log.closed) await log.finished;
+  try {
+    return fs.readFileSync(log.file, 'utf8').slice(-4000);
+  } catch (_) {
+    return '(вывода нет)';
+  }
+}
 function run(command, args) {
   return execFileSync(command, args, {
     cwd: ROOT,
@@ -37,6 +52,10 @@ test(
       `${Date.now()}-${process.pid}`,
     );
     fs.mkdirSync(dir, { recursive: true });
+    // Свежая установка качает браузер Remotion при первом рендере. Делаем это здесь, до
+    // ожидания preview: иначе скорость сети съедает таймаут первого preview-задания.
+    const remotion = resolveRemotionCommand(ROOT);
+    run(remotion.command, [...remotion.argsPrefix, 'browser', 'ensure']);
     const source = path.join(dir, 'source.mp4');
     const clip = path.join(dir, 'clip.mp4');
     const poster = path.join(dir, 'poster.jpg');
@@ -139,11 +158,39 @@ test(
       downloadUrl: 'https://videos.pexels.com/clip.mp4',
     };
     let fullDownloads = 0;
+    // Настоящий spawn preview.js; тест лишь сохраняет его вывод, чтобы показать его при сбое.
+    const previewLogs = [];
+    const previewSpawnImpl = (command, args, options) => {
+      const child = spawn(command, args, options);
+      const file = path.join(dir, `preview-job-${previewLogs.length + 1}.log`);
+      const stream = fs.createWriteStream(file);
+      const log = {
+        file,
+        closed: false,
+        finished: new Promise((resolve) => stream.once('close', resolve)),
+      };
+      previewLogs.push(log);
+      child.stdout?.on('data', (chunk) => stream.write(chunk));
+      child.stderr?.on('data', (chunk) => stream.write(chunk));
+      child.once('close', (code, signal) => {
+        log.closed = true;
+        stream.end(`\n[preview.js: ${signal || code}]\n`);
+      });
+      return child;
+    };
+    const qaJobs = [];
     const session = await startReviewServer({
       root: ROOT,
       projectDir: workspace.dir,
       editable: true,
       open: false,
+      previewSpawnImpl,
+      // Настоящее продвижение preview в финал; фоновый final QA только записываем, чтобы он не занял
+      // тяжёлый слот перед build.js ниже.
+      finalizeApprovalImpl: (current, approvedPath, options) => finalizeApproval(current, approvedPath, {
+        ...options,
+        startQa: (job) => { qaJobs.push(job); return { status: 'queued' }; },
+      }),
       brollProvider: {
         search: async () => ({ candidates: [candidate], nextPage: null }),
       },
@@ -166,14 +213,64 @@ test(
     page.on('dialog', (dialog) => dialog.accept());
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    const previewJobs = new Map();
+    page.on('response', async (response) => {
+      const url = new URL(response.url());
+      if (url.pathname !== '/api/broll/preview-job') return;
+      // Ключ – id из запроса: у ответа с ошибкой нет jobId, а интерфейс после такого ответа
+      // опрос прекращает, поэтому ожидание должно закончиться сразу.
+      const id = url.searchParams.get('id');
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (_) {
+        /* тело без JSON: код HTTP всё равно попадёт в сообщение */
+      }
+      if (!response.ok()) {
+        previewJobs.set(id, { status: 'poll-failed', http: response.status(), error: body?.error });
+        return;
+      }
+      const { state: _state, ...job } = body || {};
+      previewJobs.set(id, job.status ? job : { status: 'poll-failed', http: response.status() });
+    });
+    async function runPreview(buttonName) {
+      const started = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/broll/preview' &&
+          response.request().method() === 'POST',
+      );
+      await page.getByRole('button', { name: buttonName, exact: true }).click();
+      const response = await started;
+      const body = await response.json();
+      assert.equal(response.status(), 202, `preview не запущен: ${JSON.stringify(body)}`);
+      try {
+        await expect
+          .poll(() => previewJobs.get(body.jobId)?.status ?? 'running', {
+            timeout: PREVIEW_JOB_TIMEOUT_MS,
+          })
+          .not.toBe('running');
+      } catch (error) {
+        throw new Error(
+          `preview-задание не завершилось за ${PREVIEW_JOB_TIMEOUT_MS / 1000} с; вывод preview.js:\n${await outputTail(previewLogs.at(-1))}`,
+          { cause: error },
+        );
+      }
+      const job = previewJobs.get(body.jobId);
+      if (job.status !== 'complete') {
+        const where = job.status === 'poll-failed' ? `опрос вернул HTTP ${job.http}` : 'задание упало';
+        assert.fail(
+          `preview: ${where}, ${job.error || 'без кода'}${job.reason ? `: ${job.reason}` : ''}; вывод preview.js:\n${await outputTail(previewLogs.at(-1))}`,
+        );
+      }
+    }
     await page.goto(session.url);
     await expect(page.locator('main')).toHaveAttribute('data-review-ready', '');
     await expect(
       page.getByRole('button', { name: 'Утвердить', exact: true }),
     ).toBeDisabled();
     // Pending intent must use the real draft placeholder, never approval.
-    await page.getByRole('button', {name:'Полный preview',exact:true}).click();
-    await expect(page.getByLabel('Я посмотрел полный preview')).toBeEnabled({timeout:180000});
+    await runPreview('Полный preview');
+    await expect(page.getByLabel('Я посмотрел полный preview')).toBeEnabled({timeout:15000});
     const pendingHeaders = {Authorization:`Bearer ${session.token}`,Origin:session.origin};
     const pendingState = await (await page.request.get(session.origin+'/api/state',{headers:pendingHeaders})).json();
     const pendingApproval = await page.request.post(session.origin+'/api/broll/approve',{headers:pendingHeaders,data:{baseRevision:pendingState.session.baseRevision,baseHash:pendingState.session.baseHash,manifestHash:pendingState.session.manifestHash,confirmPreviewViewed:true}});
@@ -207,22 +304,18 @@ test(
       readProjectManifest(workspace.dir).briefs.at(-1).status,
       'draft',
     );
-    await page
-      .getByRole('button', { name: 'Preview фрагмента', exact: true })
-      .click();
+    await runPreview('Preview фрагмента');
     await expect(
       page.getByRole('button', { name: 'Полный preview', exact: true }),
-    ).toBeEnabled({ timeout: 180000 });
+    ).toBeEnabled({ timeout: 15000 });
     assert.equal(
       readProjectManifest(workspace.dir).currentPreview?.kind,
       'excerpt',
     );
     await expect(page.getByLabel('Я посмотрел полный preview')).toBeDisabled();
-    await page
-      .getByRole('button', { name: 'Полный preview', exact: true })
-      .click();
+    await runPreview('Полный preview');
     await expect(page.getByLabel('Я посмотрел полный preview')).toBeEnabled({
-      timeout: 180000,
+      timeout: 15000,
     });
     assert.equal(
       readProjectManifest(workspace.dir).currentPreview.kind,
@@ -260,7 +353,7 @@ test(
     await page.getByLabel('Я посмотрел полный preview').check();
     await page.getByRole('button', { name: 'Утвердить', exact: true }).click();
     await expect(
-      page.getByText('Утверждено. Финальный рендер запускается отдельно.'),
+      page.getByText('Утверждено. Финал готов – можно забирать; проверка финала идёт в фоне.'),
     ).toBeVisible();
     await expect(page.locator('[data-preview-kind]')).toHaveText(
       'ПОЛНЫЙ РОЛИК',
@@ -271,7 +364,16 @@ test(
     });
     assert.deepEqual(errors, []);
     const approvedManifest = readProjectManifest(workspace.dir);
-    assert.equal(approvedManifest.renders.length, 0);
+    // D-051: утверждение копирует просмотренный чистый полный preview в финал, без рендера.
+    assert.equal(approvedManifest.renders.length, 1);
+    assert.equal(approvedManifest.renders[0].source, 'preview');
+    assert.equal(approvedManifest.renders[0].briefPath, approvedManifest.currentBrief);
+    assert.equal(approvedManifest.renders[0].sha256, approvedManifest.currentPreview.sha256);
+    assert.deepEqual(qaJobs.map((job) => job.renderDir), [approvedManifest.renders[0].dir]);
+    assert.equal(
+      crypto.createHash('sha256').update(fs.readFileSync(path.join(workspace.dir, approvedManifest.final))).digest('hex'),
+      approvedManifest.currentPreview.sha256,
+    );
     const approved = JSON.parse(
       fs.readFileSync(path.join(workspace.dir, approvedManifest.currentBrief)),
     );

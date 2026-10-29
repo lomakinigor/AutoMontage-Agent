@@ -4,13 +4,13 @@ const path = require('node:path');
 
 const { buildDemoArgs, ensureOutputDestination } = require('../scripts/project/cli-options');
 
-test('demo output and generated data stay in the ignored out directory', () => {
+test('demo output and generated data stay in the ignored out directory, without Whisper final QA', () => {
   const root = path.resolve('repo/automontage');
   const cwd = root;
   assert.deepEqual(buildDemoArgs(root, cwd), [
     path.join(root, 'examples/demo-source.mp4'),
     '--scenario', path.join(root, 'examples/scenario-demo.json'),
-    '--no-transcribe', '--id', 'demo',
+    '--no-transcribe', '--no-final-qa', '--id', 'demo',
     '--outdir', path.join(root, 'out'),
   ]);
 });

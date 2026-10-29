@@ -9,10 +9,14 @@ const { spawnSync } = require('node:child_process');
 
 const {
   IMAGE_MAX_BYTES,
+  LAYER_IMPORT_LIMITS,
   VIDEO_MAX_BYTES,
   createImportController,
   deriveOutputBudgets,
   importReviewMedia,
+  normalizeImportLimits,
+  processTimeoutMs,
+  remuxConformity,
   parseImportHeaders,
   requiredFreeBytes,
 } = require('../scripts/review/media-import');
@@ -26,6 +30,28 @@ const {
 const { windowsFileSystem } = require('./helpers/windows-filesystem');
 
 const UUID = '4af36be4-0b26-4e6f-bd48-8bdd2215a4f1';
+
+test('remux conformity requires the full normalized master contract', () => {
+  const source = { videoCodec: 'h264', pixelFormat: 'yuv420p', rotation: 0, width: 320, height: 180,
+    fps: 30, hasAudio: true, audioCodec: 'aac', audioSampleRate: 48000, audioChannels: 2 };
+  assert.deepEqual(remuxConformity(source, 30), { ok: true, reason: null });
+  assert.deepEqual(remuxConformity({ ...source, hasAudio: false, audioCodec: null }, 30), { ok: true, reason: null });
+  assert.equal(remuxConformity(source, NaN).ok, false);
+  for (const patch of [{ videoCodec: 'hevc' }, { pixelFormat: 'yuv444p' }, { rotation: 90 }, { width: 319 },
+    { height: 179 }, { fps: 29.97 }, { audioCodec: 'mp3' }, { audioChannels: 1 }, { audioSampleRate: 44100 }]) {
+    const result = remuxConformity({ ...source, ...patch }, 30);
+    assert.equal(result.ok, false, JSON.stringify(patch));
+    assert.ok(typeof result.reason === 'string' && result.reason.length > 0);
+  }
+});
+
+test('invalid master strategy is rejected before acquiring the import controller', async () => {
+  let acquired = false;
+  await assert.rejects(importReviewMedia({ masterStrategy: 'zip',
+    controller: { acquire: () => { acquired = true; return false; } },
+  }), /masterStrategy/);
+  assert.equal(acquired, false);
+});
 
 function rawHeaders(filename, contentType, contentLength) {
   return {
@@ -241,12 +267,12 @@ test('output budgets include geometry and time, clamp absolute caps, and reject 
   }), (error) => error.code === 'MEDIA_IMPORT_OUTPUT_BUDGET_INVALID');
 });
 
-test('disk reserve is checked before reading a request byte', async () => {
+test('disk reserve is checked before reading a request byte', async (t) => {
   let reads = 0;
   const request = new Readable({ read() { reads += 1; this.push(Buffer.from('x')); this.push(null); } });
   await assert.rejects(importReviewMedia({
     request,
-    projectDir: tempProject({ after() {} }),
+    projectDir: tempProject(t),
     outputFps: 25,
     headers: rawHeaders('x.png', 'image/png', 1),
     controller: createImportController(),
@@ -732,7 +758,7 @@ test('video process argv relies on cross-version default autorotation and metada
     '-hide_banner', '-loglevel', 'error', '-i', master.args.at(-1),
     '-map', '0:v:0', '-map', '0:a:0', '-map_metadata', '-1',
     '-vf', "scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,fps=24,pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0",
-    '-c:v', 'libvpx', '-crf', '32', '-b:v', '0',
+    '-c:v', 'libvpx', '-threads', '1', '-crf', '32', '-b:v', '0',
     '-c:a', 'libopus', '-ar', '48000', '-ac', '2', '-b:a', '96k',
     '-t', '1', '-fs', String(budgets.proxy), '-y', proxy.args.at(-1),
   ]);
@@ -1308,4 +1334,122 @@ test('real tiny images and videos normalize, decode, preserve alpha/first GIF fr
       runMediaProcessImpl: runMediaProcess,
     }), (error) => error.status === 422 && error.code === 'MEDIA_IMPORT_CONTENT_MISMATCH');
   });
+});
+
+// Проверенный слой урока 42:07 (1920×1080@50, 126 332 кадра, 1,43 ГиБ) – реальный случай отказа импорта.
+const LESSON_LAYER_BYTES = 1_535_000_000;
+const LESSON_LAYER_SECONDS = 2527.08;
+const GIB = 1024 * 1024 * 1024;
+const roomyDisk = () => ({ bavail: 10n ** 12n, bsize: 4096n });
+
+test('limits option accepts only positive finite numbers within the layer ceiling', async () => {
+  assert.deepEqual(LAYER_IMPORT_LIMITS, { videoMaxBytes: 4 * GIB, videoMaxSeconds: 7200 });
+  assert.deepEqual(normalizeImportLimits(undefined), { videoMaxBytes: VIDEO_MAX_BYTES, videoMaxSeconds: 1800 });
+  assert.deepEqual(normalizeImportLimits(null), { videoMaxBytes: VIDEO_MAX_BYTES, videoMaxSeconds: 1800 });
+  assert.deepEqual(normalizeImportLimits(LAYER_IMPORT_LIMITS), LAYER_IMPORT_LIMITS);
+  assert.deepEqual(normalizeImportLimits({ videoMaxBytes: 1, videoMaxSeconds: 0.5 }), { videoMaxBytes: 1, videoMaxSeconds: 0.5 });
+  const invalid = [
+    {}, [], 'big', 4 * GIB, { videoMaxBytes: 4 * GIB }, { videoMaxSeconds: 7200 },
+    { ...LAYER_IMPORT_LIMITS, imageMaxBytes: 1 },
+    { videoMaxBytes: 0, videoMaxSeconds: 60 }, { videoMaxBytes: -1, videoMaxSeconds: 60 },
+    { videoMaxBytes: 1.5, videoMaxSeconds: 60 }, { videoMaxBytes: Infinity, videoMaxSeconds: 60 },
+    { videoMaxBytes: Number.NaN, videoMaxSeconds: 60 }, { videoMaxBytes: '1024', videoMaxSeconds: 60 },
+    { videoMaxBytes: 4 * GIB + 1, videoMaxSeconds: 60 }, { videoMaxBytes: Number.MAX_SAFE_INTEGER, videoMaxSeconds: 60 },
+    { videoMaxBytes: 1, videoMaxSeconds: 0 }, { videoMaxBytes: 1, videoMaxSeconds: -5 },
+    { videoMaxBytes: 1, videoMaxSeconds: Infinity }, { videoMaxBytes: 1, videoMaxSeconds: Number.NaN },
+    { videoMaxBytes: 1, videoMaxSeconds: '60' }, { videoMaxBytes: 1, videoMaxSeconds: 7200.001 },
+  ];
+  for (const limits of invalid) {
+    assert.throws(() => normalizeImportLimits(limits), /^Error: limits/, JSON.stringify(limits));
+    let acquired = false;
+    await assert.rejects(importReviewMedia({
+      limits, controller: { acquire: () => { acquired = true; return false; } },
+    }), /limits/);
+    assert.equal(acquired, false, 'invalid limits are rejected before acquiring the import controller');
+  }
+});
+
+test('regression: layer limits accept a 1.43 GiB lesson layer while Review keeps its 1 GiB ceiling', async (t) => {
+  const headers = rawHeaders('layer-01.mp4', 'video/mp4', LESSON_LAYER_BYTES);
+  expectImportError(() => parseImportHeaders(headers), 413, 'MEDIA_IMPORT_TOO_LARGE');
+  assert.equal(parseImportHeaders(headers, LAYER_IMPORT_LIMITS).contentLength, LESSON_LAYER_BYTES);
+  assert.equal(parseImportHeaders(rawHeaders('x.mp4', 'video/mp4', 4 * GIB), LAYER_IMPORT_LIMITS).contentLength, 4 * GIB);
+  expectImportError(() => parseImportHeaders(rawHeaders('x.mp4', 'video/mp4', 4 * GIB + 1), LAYER_IMPORT_LIMITS),
+    413, 'MEDIA_IMPORT_TOO_LARGE');
+  // Изображения не получают лимит слоя.
+  expectImportError(() => parseImportHeaders(rawHeaders('x.png', 'image/png', IMAGE_MAX_BYTES + 1), LAYER_IMPORT_LIMITS),
+    413, 'MEDIA_IMPORT_TOO_LARGE');
+  for (const [length, limits] of [[VIDEO_MAX_BYTES + 1, undefined], [LESSON_LAYER_BYTES, undefined], [4 * GIB + 1, LAYER_IMPORT_LIMITS]]) {
+    let reads = 0;
+    const request = new Readable({ read() { reads += 1; this.push(null); } });
+    await assert.rejects(importReviewMedia({
+      request, projectDir: tempProject(t), outputFps: 50,
+      headers: rawHeaders('layer-01.mp4', 'video/mp4', length), controller: createImportController(),
+      statfsImpl: roomyDisk, randomId: () => UUID, limits,
+      runMediaProcessImpl: fakeProcessor(),
+    }), (error) => error.status === 413 && error.code === 'MEDIA_IMPORT_TOO_LARGE');
+    assert.equal(reads, 0);
+  }
+});
+
+test('regression: a 42-minute 1080p lesson layer imports with layer limits; Review still refuses over 30 minutes', async (t) => {
+  // fakeProcessor отдаёт мастеру FPS последнего фильтра (прокси ≤ 30), поэтому здесь 25 кадров/с, не 50.
+  const source = probeJson({ width: 1920, height: 1080, fps: '25/1', duration: LESSON_LAYER_SECONDS, audio: true });
+  const importWith = (limits, onCall) => importReviewMedia({
+    request: Readable.from([Buffer.from('x')]), projectDir: tempProject(t), outputFps: 25,
+    headers: rawHeaders('layer-01.mp4', 'video/mp4', 1), controller: createImportController(),
+    statfsImpl: roomyDisk, randomId: () => UUID, limits, log: () => {},
+    runMediaProcessImpl: fakeProcessor({ source, onCall }),
+  });
+  await assert.rejects(importWith(undefined), (error) => error.status === 422 && error.code === 'MEDIA_IMPORT_DURATION_UNSUPPORTED');
+  const calls = [];
+  const result = await importWith(LAYER_IMPORT_LIMITS, (call) => calls.push(call));
+  assert.equal(result.reference, `assets/broll/video/${UUID}/media.mp4`);
+  const longTimeout = Math.ceil(LESSON_LAYER_SECONDS * 4) * 1000;
+  const heavy = calls.filter((call) => call.command === 'ffmpeg');
+  assert.ok(heavy.length >= 4, 'master, proxy and two decode checks');
+  for (const call of heavy) assert.equal(call.timeoutMs, longTimeout, call.args.join(' '));
+  for (const call of calls.filter((entry) => entry.command === 'ffprobe')) assert.equal(call.timeoutMs, 30_000);
+
+  for (const duration of [7200.01, 9000]) {
+    await assert.rejects(importReviewMedia({
+      request: Readable.from([Buffer.from('x')]), projectDir: tempProject(t), outputFps: 50,
+      headers: rawHeaders('layer-01.mp4', 'video/mp4', 1), controller: createImportController(),
+      statfsImpl: roomyDisk, randomId: () => UUID, limits: LAYER_IMPORT_LIMITS,
+      runMediaProcessImpl: fakeProcessor({ source: probeJson({ duration }) }),
+    }), (error) => error.status === 422 && error.code === 'MEDIA_IMPORT_DURATION_UNSUPPORTED');
+  }
+});
+
+test('process timeouts stay 2 hours for Review media and scale for long layers up to 8 hours', () => {
+  const twoHours = 2 * 60 * 60_000;
+  for (const duration of [0, 1, 600, 1800, Number.NaN]) assert.equal(processTimeoutMs(duration), twoHours);
+  assert.equal(processTimeoutMs(LESSON_LAYER_SECONDS), Math.ceil(LESSON_LAYER_SECONDS * 4) * 1000);
+  assert.equal(processTimeoutMs(7200), 8 * 60 * 60_000);
+  assert.equal(processTimeoutMs(1e9), 8 * 60 * 60_000);
+});
+
+test('output budgets keep Review caps and grow only beyond Review limits for a long lesson layer', () => {
+  const review = deriveOutputBudgets({
+    mediaKind: 'video', inputBytes: VIDEO_MAX_BYTES, width: 1920, height: 1080,
+    durationSec: 1800, fps: 50, hasAudio: true,
+  });
+  assert.equal(review.master, 2n * 1024n * 1024n * 1024n);
+  assert.equal(review.proxy, 512n * 1024n * 1024n);
+  const layer = deriveOutputBudgets({
+    mediaKind: 'video', inputBytes: LESSON_LAYER_BYTES, width: 1920, height: 1080,
+    durationSec: LESSON_LAYER_SECONDS, fps: 50, hasAudio: true,
+  });
+  // Мастер – до двух размеров входа (переупаковка ≈ вход, перекодирование до двойного битрейта),
+  // прокси – 512 МиБ на 30 минут (в среднем ~2,4 Мбит/с webm).
+  assert.equal(layer.master, 2n * BigInt(LESSON_LAYER_BYTES));
+  const expectedProxy = (512n * 1024n * 1024n * 2_527_080n + 1_799_999n) / 1_800_000n;
+  assert.equal(layer.proxy, expectedProxy);
+  assert.ok(layer.proxy > 512n * 1024n * 1024n);
+  const longest = deriveOutputBudgets({
+    mediaKind: 'video', inputBytes: 4 * GIB, width: 4096, height: 2160,
+    durationSec: 7200, fps: 120, hasAudio: true,
+  });
+  assert.equal(longest.master, 8n * 1024n * 1024n * 1024n);
+  assert.equal(longest.proxy, 2n * 1024n * 1024n * 1024n);
 });

@@ -6,6 +6,8 @@ const path = require('node:path');
 const { isCanonicalBrollReference } = require('./lesson/broll-media');
 const { sanitizeNamespace } = require('./public-media');
 const { fsyncDirectoryIfSupported } = require('./filesystem-capabilities');
+const { probeOpenedMedia } = require('./media-probe');
+const { verifySceneBrollMedia } = require('./lesson/broll-media-files');
 
 const COPY_BUFFER_BYTES = 64 * 1024;
 const MAX_CTIME_REPIN_ROUNDS = 3;
@@ -13,6 +15,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const SHA256 = /^[a-f0-9]{64}$/;
 const IMAGE_EXTENSIONS = new Set(['.avif', '.gif', '.jpeg', '.jpg', '.png', '.webp']);
 const VIDEO_EXTENSIONS = new Set(['.avi', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', '.mpg', '.webm']);
+const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus']);
 const REMOTE_IMAGE = /^https?:\/\//i;
 const ASSERT_BUNDLE_CURRENT = Symbol('assertBundleCurrent');
 const ASSERT_BUNDLE_AFTER_CALLBACK = Symbol('assertBundleAfterCallback');
@@ -563,6 +566,7 @@ function prepareLessonMediaBundle(options = {}, policy) {
     props,
     sourcePath,
     sourceAlias,
+    expectedSourceSha256 = null,
     namespace,
     temporaryId = randomUUID(),
     fileSystem = fs,
@@ -586,13 +590,20 @@ function prepareLessonMediaBundle(options = {}, policy) {
     || !isCanonicalBrollReference(sourceAlias)) {
     fail('trusted lesson source alias is required');
   }
-  extensionForSource(sourceAlias);
-  if (props.faceSrc !== sourceAlias || props.audioSrc !== sourceAlias) {
+  const motion = authoritativeBrief.kind === 'motion-reel';
+  if (motion && (workspace?.manifest?.projectKind !== 'motion-reel'
+    || workspace?.manifest?.source?.mediaKind !== 'audio')) fail('motion media requires an audio workspace');
+  const privacyGuard = motion
+    ? require('./project/private-workspace').preparePrivateWorkspace(workspace.dir, { fileSystem }) : null;
+  if (motion) safeExtension(sourceAlias, AUDIO_EXTENSIONS, 'narration');
+  else extensionForSource(sourceAlias);
+  if ((motion ? Object.hasOwn(props, 'faceSrc') : props.faceSrc !== sourceAlias)
+    || props.audioSrc !== sourceAlias) {
     fail('lesson props top-level source alias does not match the trusted source alias');
   }
   const approvedSource = path.isAbsolute(authoritativeBrief.source)
     ? path.resolve(authoritativeBrief.source)
-    : path.resolve(root, authoritativeBrief.source || '');
+    : path.resolve(motion ? workspace.dir : root, authoritativeBrief.source || '');
   const resolvedSourcePath = path.resolve(sourcePath);
   if (approvedSource !== resolvedSourcePath) fail('source path does not match the approved brief');
 
@@ -1031,12 +1042,30 @@ function prepareLessonMediaBundle(options = {}, policy) {
     const copiedByIdentity = new Map();
     let sequence = 0;
 
-    function snapshotResolved(resolved, extension, expectedSha = null, mediaRole = null) {
+    function snapshotResolved(resolved, extension, expectedSha = null, mediaRole = null, motionScene = null) {
+      privacyGuard?.assertCurrent();
       if (expectedSha !== null && !SHA256.test(expectedSha)) fail('approved SHA-256 is invalid');
-      if (mediaRole !== 'image' && mediaRole !== 'video') fail('bundle media role is invalid');
+      if (!['image', 'video', 'audio'].includes(mediaRole)) fail('bundle media role is invalid');
       assertOwnedDirectoryCurrent();
       const tracked = openTracked(resolved, fileSystem);
       try {
+        if (motionScene && mediaRole === 'video') {
+          // Probe the same pinned file that is hashed/copied. Validate every scene,
+          // including repeated uses of one inode with different trim/audio settings.
+          const probe = probeOpenedMedia({ fileDescriptor: tracked.descriptor, stage: 'motion media probe' });
+          assertTrackedCurrent(tracked, fileSystem);
+          if (probe.mediaKind !== 'video') fail('motion media kind does not match the brief');
+          // Renderer defaults belong to this check, never to the hash-bound brief.
+          const media = { ...motionScene.media,
+            audioMode: motionScene.media.audioMode ?? 'mute',
+            trimStartSec: motionScene.media.trimStartSec ?? 0 };
+          if (media.audioMode !== 'mute' && (!probe.hasAudio
+            || !probe.audioCodec || !probe.audioSampleRate || !probe.audioChannels)) {
+            fail('motion media audio mode requires a usable audio stream');
+          }
+          verifySceneBrollMedia({ scene: { ...motionScene, brollMedia: media },
+            fps: authoritativeBrief.output.fps, probe });
+        }
         const key = `${tracked.identity.dev}:${tracked.identity.ino}`;
         const existing = copiedByIdentity.get(key);
         if (existing) {
@@ -1105,16 +1134,30 @@ function prepareLessonMediaBundle(options = {}, policy) {
 
     const sourcePublicPath = snapshotResolved(
       resolveSource(resolvedSourcePath, fileSystem),
-      extensionForSource(resolvedSourcePath),
-      null,
-      'video',
+      motion ? safeExtension(resolvedSourcePath, AUDIO_EXTENSIONS, 'narration') : extensionForSource(resolvedSourcePath),
+      motion ? authoritativeBrief.approval?.sourceSha256 || expectedSourceSha256 : expectedSourceSha256,
+      motion ? 'audio' : 'video',
     );
-    clonedProps.faceSrc = sourcePublicPath;
+    const sourceSha256 = ownedFiles.get(path.posix.basename(sourcePublicPath)).sha256;
+    if (!motion) clonedProps.faceSrc = sourcePublicPath;
     clonedProps.audioSrc = sourcePublicPath;
 
     for (let index = 0; index < authoritativeBrief.scenes.length; index += 1) {
       const approvedScene = authoritativeBrief.scenes[index];
       const clonedScene = clonedProps.scenes[index];
+      if (motion) {
+        if (!clonedScene || JSON.stringify(clonedScene) !== JSON.stringify(approvedScene)) {
+          fail('motion props do not match the authoritative brief');
+        }
+        if (approvedScene.scene === 'media') {
+          const media = approvedScene.media;
+          clonedScene.media.src = snapshotResolved(
+            resolveContainedReference({ storageRoot: workspace.dir, reference: media.src, fileSystem }),
+            extensionForStructured(media), media.sha256, media.kind, approvedScene,
+          );
+        }
+        continue;
+      }
       const hasLegacy = approvedScene && Object.hasOwn(approvedScene, 'brollSrc');
       const hasStructured = approvedScene && Object.hasOwn(approvedScene, 'brollMedia');
       if (!clonedScene || clonedScene.scene !== approvedScene?.scene) {
@@ -1187,10 +1230,21 @@ function prepareLessonMediaBundle(options = {}, policy) {
       }
     }
 
+    let musicPath = null;
+    if (motion && authoritativeBrief.music) {
+      const music = authoritativeBrief.music;
+      const publicPath = snapshotResolved(
+        resolveContainedReference({ storageRoot: workspace.dir, reference: music.file, fileSystem }),
+        safeExtension(music.file, AUDIO_EXTENSIONS, 'music'), music.sha256, 'audio',
+      );
+      musicPath = path.join(base.publicDirectory, ...publicPath.split('/'));
+    }
     verifyBundleFilesCurrent();
 
     return {
       props: clonedProps,
+      sourceSha256,
+      musicPath,
       directory,
       publicDirectory: base.publicDirectory,
       cleanup,
@@ -1215,29 +1269,46 @@ function prepareRenderMediaBundle(options) {
   });
 }
 
-function withLessonMediaBundle(options, operation, policy) {
+// Единственная реализация жизни lease: ASSERT_BUNDLE_CURRENT до операции, ASSERT_BUNDLE_AFTER_CALLBACK
+// после, cleanup всегда (сбой cleanup после сбоя операции – диагностика к исходной ошибке). С
+// awaitOperation: true операция может вернуть Promise, и lease живёт до его завершения.
+function withLessonMediaBundle(options, operation, policy, { awaitOperation = false } = {}) {
   if (typeof operation !== 'function') fail('operation must be a function');
   const lease = prepareLessonMediaBundle(options, policy);
   let operationError = null;
   let operationFailed = false;
-  try {
-    lease[ASSERT_BUNDLE_CURRENT]();
-    const result = operation(lease);
-    lease[ASSERT_BUNDLE_AFTER_CALLBACK]();
-    return result;
-  } catch (error) {
+  let deferred = false;
+  const failWith = (error) => {
     operationError = error;
     operationFailed = true;
     throw error;
-  } finally {
+  };
+  const cleanup = () => {
     try {
       lease.cleanup();
     } catch (cleanupError) {
       if (!operationFailed) throw cleanupError;
       attachCleanupDiagnostic(operationError, cleanupError);
     }
+  };
+  const afterCallback = (result) => {
+    lease[ASSERT_BUNDLE_AFTER_CALLBACK]();
+    return result;
+  };
+  try {
+    lease[ASSERT_BUNDLE_CURRENT]();
+    const result = operation(lease);
+    if (!awaitOperation) return afterCallback(result);
+    deferred = true;
+    return Promise.resolve(result).then(afterCallback).catch(failWith).finally(cleanup);
+  } catch (error) {
+    return failWith(error);
+  } finally {
+    if (!deferred) cleanup();
   }
 }
+
+const PREVIEW_POLICY = Object.freeze({ briefKey: 'previewBrief', purpose: 'preview', requireStatus: 'draft' });
 
 function withRenderMediaBundle(options, operation) {
   if (arguments.length > 2) fail('pre-render prepare operation is unsupported');
@@ -1250,15 +1321,39 @@ function withRenderMediaBundle(options, operation) {
 
 function withPreviewMediaBundle(options, operation) {
   if (arguments.length > 2) fail('pre-preview prepare operation is unsupported');
-  return withLessonMediaBundle(options, operation, {
-    briefKey: 'previewBrief',
-    purpose: 'preview',
-    requireStatus: 'draft',
+  return withLessonMediaBundle(options, operation, PREVIEW_POLICY);
+}
+
+// Тот же lease черновика, что у withPreviewMediaBundle, но операция асинхронная: кадры критика
+// (scripts/qa/moment-stills.js) рисует renderStill в Promise, и lease обязан жить до его конца.
+async function withPreviewMediaBundleAsync(options, operation) {
+  if (arguments.length > 2) fail('pre-preview prepare operation is unsupported');
+  return withLessonMediaBundle(options, operation, PREVIEW_POLICY, { awaitOperation: true });
+}
+
+function verifyMotionBriefMedia({ root, workspace, brief, fileSystem = fs }) {
+  const sourcePath = require('./project/workspace').resolveProjectPath(workspace.dir, brief.source, {
+    fileSystem, mustExist: true, type: 'file',
   });
+  if (brief.source !== workspace.manifest.source.localPath) fail('motion brief uses another narration source');
+  const sourceAlias = path.basename(sourcePath);
+  const props = require('./motion/brief').buildDraftMotionProps({ brief, sourceFile: sourceAlias });
+  const lease = prepareLessonMediaBundle({ root, workspace, props, previewBrief: brief, sourcePath, sourceAlias, fileSystem }, {
+    briefKey: 'previewBrief', purpose: 'approval', requireStatus: 'draft',
+  });
+  return {
+    hasDiscovery: false,
+    assertCurrent: lease[ASSERT_BUNDLE_CURRENT],
+    assertIdentity: lease[ASSERT_BUNDLE_CURRENT],
+    close: lease.cleanup,
+  };
 }
 
 module.exports = {
+  assertTrustedDirectoryChain,
+  verifyMotionBriefMedia,
   prepareRenderMediaBundle,
   withPreviewMediaBundle,
+  withPreviewMediaBundleAsync,
   withRenderMediaBundle,
 };

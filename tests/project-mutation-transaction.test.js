@@ -19,15 +19,17 @@ const {
   writeProjectManifest,
 } = require('../scripts/project/workspace');
 const { makeReviewProject, registerHigherBrief } = require('./helpers/review-project');
+const { formatMotionBriefMarkdown } = require('../scripts/motion/brief');
 
-function makeProject(t, name) {
+function makeProject(t, name, motion = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'automontage-project-mutation-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const sourcePath = path.join(root, 'camera.mp4');
+  const sourcePath = path.join(root, motion ? 'narration.wav' : 'camera.mp4');
   fs.writeFileSync(sourcePath, 'source-video');
   return createOrOpenProject({
     projectDir: path.join(root, 'project'),
     name,
+    ...(motion ? { projectKind: 'motion-reel', mediaKind: 'audio' } : {}),
     sourcePath,
     now: new Date('2026-08-22T08:00:00.000Z'),
   });
@@ -175,6 +177,197 @@ test('a live process mutation lease blocks a second process without changing own
   assert.deepEqual(await waitForExit(child), { code: 0, signal: null });
 });
 
+test('two real processes contending for the lease only ever get the lease or PROJECT_MANIFEST_CONFLICT', { timeout: 30_000 }, async (t) => {
+  const workspace = makeProject(t, 'Lease contention');
+  const workerPath = path.join(path.dirname(workspace.dir), 'lease-contender.js');
+  // Каждый процесс сотни раз берёт и сразу отпускает lease. Lease-файл то появляется, то исчезает
+  // прямо во время проверки пути: наружу может выйти только конфликт, но не сырой ENOENT.
+  // Оба процесса стартуют цикл по общему сигналу «go» (#105): под нагрузкой второй fork иногда
+  // поднимался, когда первый уже отработал свои 2 с, и конкуренции не случалось вовсе.
+  fs.writeFileSync(workerPath, String.raw`
+const { acquireProjectMutationLease } = require(process.argv[2]);
+const projectDir = process.argv[3];
+process.once('message', () => {
+  const counts = { acquired: 0, conflicts: 0 };
+  const unexpected = [];
+  const end = Date.now() + 2000;
+  while (Date.now() < end && unexpected.length === 0) {
+    try {
+      acquireProjectMutationLease(projectDir).release();
+      counts.acquired += 1;
+    } catch (error) {
+      if (error && error.code === 'PROJECT_MANIFEST_CONFLICT') counts.conflicts += 1;
+      else unexpected.push(String(error && (error.code || error.message)));
+    }
+  }
+  process.send({ type: 'result', counts, unexpected }, () => process.exit(0));
+});
+process.send({ type: 'ready' });
+`);
+  const children = [0, 1].map(() => fork(
+    workerPath,
+    [require.resolve('../scripts/project/workspace'), workspace.dir],
+    { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] },
+  ));
+  t.after(() => {
+    for (const child of children) {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+    }
+  });
+  await Promise.all(children.map((child) => waitForMessage(child, 'ready')));
+  const pending = children.map((child) => waitForMessage(child, 'result'));
+  for (const child of children) child.send({ type: 'go' });
+  const results = await Promise.all(pending);
+  for (const { counts, unexpected } of results) {
+    assert.deepEqual(unexpected, [], `неожиданные ошибки lease: ${unexpected.join(', ')}`);
+    assert.ok(counts.acquired > 0, 'каждый процесс хоть раз получил lease');
+  }
+  assert.ok(
+    results.some(({ counts }) => counts.conflicts > 0),
+    'процессы действительно конкурировали за lease',
+  );
+});
+
+test('a lease path that keeps vanishing is a conflict, but a missing project folder keeps its own error', (t) => {
+  const workspace = makeProject(t, 'Vanishing lease');
+  const leasePath = path.join(workspace.dir, '.project-mutation.lock');
+  // Lease-файл каждый раз исчезает между existsSync и realpathSync: проект на месте, lease занят.
+  const flickering = new Proxy(fs, {
+    get(target, key) {
+      if (key === 'existsSync') {
+        return (filename) => (path.resolve(String(filename)) === leasePath ? true : target.existsSync(filename));
+      }
+      return Reflect.get(target, key);
+    },
+  });
+  assert.throws(
+    () => acquireProjectMutationLease(workspace.dir, { fileSystem: flickering }),
+    (error) => error && error.code === 'PROJECT_MANIFEST_CONFLICT',
+  );
+
+  const missing = path.join(path.dirname(workspace.dir), 'deleted-project');
+  assert.throws(
+    () => acquireProjectMutationLease(missing),
+    (error) => error && error.code === 'ENOENT',
+  );
+});
+
+test('a Windows lease pending deletion (EPERM, EBUSY) is contention: acquisition retries, persistent lock is a bounded conflict', (t) => {
+  const workspace = makeProject(t, 'Delete pending lease');
+  const leasePath = path.join(workspace.dir, '.project-mutation.lock');
+  // Windows: предыдущий владелец как раз удаляет lease (delete pending). lstat, realpath и link
+  // по этому имени отвечают EPERM или EBUSY вместо ENOENT, пока последний дескриптор не закрыт.
+  function pendingFileSystem({ failures, code = 'EPERM', methods = ['lstatSync', 'realpathSync', 'linkSync'] }) {
+    const calls = Object.fromEntries(methods.map((method) => [method, 0]));
+    const fileSystem = new Proxy(fs, {
+      get(target, key) {
+        if (!methods.includes(key)) return Reflect.get(target, key);
+        return (...args) => {
+          const name = key === 'linkSync' ? args[1] : args[0];
+          if (path.resolve(String(name)) === leasePath) {
+            calls[key] += 1;
+            if (calls[key] <= failures) {
+              throw Object.assign(new Error(`${code}: operation not permitted, ${key} '${leasePath}'`), { code });
+            }
+          }
+          return target[key](...args);
+        };
+      },
+    });
+    return { fileSystem, calls };
+  }
+  const leftovers = () => fs.readdirSync(workspace.dir).filter((name) => name.startsWith('.project-mutation.lock'));
+
+  for (const code of ['EPERM', 'EBUSY']) {
+    const transient = pendingFileSystem({ failures: 1, code });
+    const lease = acquireProjectMutationLease(workspace.dir, { fileSystem: transient.fileSystem, platform: 'win32' });
+    assert.equal(lease.path, leasePath);
+    assert.equal(transient.calls.linkSync, 2, `${code}: занятое имя lease повторено, а не брошено`);
+    lease.release();
+    assert.deepEqual(leftovers(), []);
+  }
+
+  const persistent = pendingFileSystem({ failures: Infinity, methods: ['linkSync'] });
+  assert.throws(
+    () => acquireProjectMutationLease(workspace.dir, { fileSystem: persistent.fileSystem, platform: 'win32' }),
+    (error) => error && error.code === 'PROJECT_MANIFEST_CONFLICT',
+  );
+  assert.ok(persistent.calls.linkSync <= 4, 'попытки ограничены, без бесконечного цикла');
+  assert.deepEqual(leftovers(), []);
+
+  const pendingOnResolve = pendingFileSystem({ failures: Infinity, methods: ['realpathSync'] });
+  const existing = acquireProjectMutationLease(workspace.dir);
+  try {
+    assert.throws(
+      () => acquireProjectMutationLease(workspace.dir, { fileSystem: pendingOnResolve.fileSystem, platform: 'win32' }),
+      (error) => error && error.code === 'PROJECT_MANIFEST_CONFLICT',
+    );
+  } finally {
+    existing.release();
+  }
+
+  // Вне Windows EPERM остаётся настоящей ошибкой доступа, а не занятостью.
+  const linux = pendingFileSystem({ failures: 1, methods: ['linkSync'] });
+  assert.throws(
+    () => acquireProjectMutationLease(workspace.dir, { fileSystem: linux.fileSystem, platform: 'linux' }),
+    (error) => error && error.code === 'EPERM',
+  );
+  assert.deepEqual(leftovers(), []);
+});
+
+test('a dead lease that vanishes or goes delete pending during the pre-release check is a conflict, not a raw error', (t) => {
+  const workspace = makeProject(t, 'Vanishing dead lease');
+  const leasePath = path.join(workspace.dir, '.project-mutation.lock');
+  const owner = {
+    version: 1,
+    token: '11111111-1111-4111-8111-111111111111',
+    pid: 424242,
+    hostname: 'lease-host',
+    acquiredAt: '2026-08-05T12:00:00.000Z',
+  };
+  const dead = () => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); };
+  // Первое чтение (readLeaseOwner) видит брошенный lease; повторная сверка перед удалением
+  // ловит его уже исчезнувшим (ENOENT, ENOTDIR на любой ОС) или удаляемым на Windows (EPERM, EBUSY).
+  function vanishingOnRecheck(code) {
+    let reads = 0;
+    return new Proxy(fs, {
+      get(target, key) {
+        if (key !== 'readFileSync') return Reflect.get(target, key);
+        return (filename, ...args) => {
+          if (path.resolve(String(filename)) === leasePath && (reads += 1) === 2) {
+            throw Object.assign(new Error(`${code}: lease check '${leasePath}'`), { code });
+          }
+          return target.readFileSync(filename, ...args);
+        };
+      },
+    });
+  }
+  const cases = [
+    ['ENOENT', 'linux', 'PROJECT_MANIFEST_CONFLICT'],
+    ['ENOTDIR', 'linux', 'PROJECT_MANIFEST_CONFLICT'],
+    ['ENOENT', 'win32', 'PROJECT_MANIFEST_CONFLICT'],
+    ['EPERM', 'win32', 'PROJECT_MANIFEST_CONFLICT'],
+    ['EBUSY', 'win32', 'PROJECT_MANIFEST_CONFLICT'],
+    // Вне Windows EPERM остаётся настоящей ошибкой доступа.
+    ['EPERM', 'linux', 'EPERM'],
+  ];
+  for (const [code, platform, expected] of cases) {
+    fs.writeFileSync(leasePath, `${JSON.stringify(owner)}\n`);
+    assert.throws(
+      () => acquireProjectMutationLease(workspace.dir, {
+        fileSystem: vanishingOnRecheck(code),
+        platform,
+        hostname: owner.hostname,
+        killProcess: dead,
+      }),
+      (error) => error && error.code === expected,
+      `${code} ${platform}`,
+    );
+    assert.equal(fs.readFileSync(leasePath, 'utf8'), `${JSON.stringify(owner)}\n`, 'чужой lease не удалён');
+  }
+  fs.unlinkSync(leasePath);
+});
+
 test('a hard process exit leaves a provably dead lease that the next mutation reclaims', async (t) => {
   const workspace = makeProject(t, 'Dead owner');
   const workerPath = writeLeaseWorker(path.dirname(workspace.dir));
@@ -283,6 +476,47 @@ test('approval always runs the complete lesson brief validator before publicatio
   assert.throws(() => approveBrief(state.workspace, state.briefPath), /draft brief is invalid.*title/is);
   assert.deepEqual(fs.readFileSync(path.join(state.workspace.dir, 'project.json')), manifestBefore);
   assert.equal(fs.existsSync(state.briefPath.replace('-draft.', '-approved.')), false);
+});
+
+test('approval dispatches from the stored motion brief kind even with a lesson filename', (t) => {
+  const workspace = makeProject(t, 'Stored motion kind', true);
+  const draft = nextBriefPaths(workspace, 'lesson');
+  const brief = {
+    version: 1,
+    kind: 'motion-reel',
+    status: 'draft',
+    source: workspace.manifest.source.localPath,
+    theme: 'motion-neutral',
+    title: 'Stored kind wins',
+    output: { aspect: 'vertical', width: 1080, height: 1920, fps: 30, durationInFrames: 90 },
+    scenes: [{ scene: 'kinetic-title', start: 0, end: 3, text: 'Не имя файла' }],
+  };
+  fs.writeFileSync(draft.jsonPath, `${JSON.stringify(brief, null, 2)}\n`);
+  fs.writeFileSync(draft.markdownPath, formatMotionBriefMarkdown(brief));
+  recordBrief(workspace, {
+    revision: draft.revision,
+    jsonPath: draft.jsonPath,
+    markdownPath: draft.markdownPath,
+    status: 'draft',
+    kind: 'motion-reel',
+    theme: brief.theme,
+    aspect: brief.output.aspect,
+  });
+
+  require('../scripts/preview').runPreview({ projectDir: workspace.dir,
+    briefPath: workspace.manifest.currentBrief, open: false }, {
+    ...require('./helpers/motion-workflow-fixture.cjs').fakeMedia(),
+    probeOpenedAudioImpl: () => ({ mediaKind: 'audio', durationSec: 3 }),
+    probeVideoImpl: () => ({ width: 1080, height: 1920, fps: 30, duration: 3 }),
+  });
+  workspace.manifest = readProjectManifest(workspace.dir);
+  const approved = approveBrief(workspace, draft.jsonPath, { confirmPreviewViewed: true });
+  const persisted = JSON.parse(fs.readFileSync(approved.jsonPath, 'utf8'));
+  const markdown = fs.readFileSync(approved.markdownPath, 'utf8');
+
+  assert.equal(persisted.status, 'approved');
+  assert.match(markdown, /^# Motion Reel: Stored kind wins$/m);
+  assert.equal(readProjectManifest(workspace.dir).briefs.at(-1).kind, 'motion-reel');
 });
 
 test('approval no-replace publication preserves a foreign destination created at commit', (t) => {

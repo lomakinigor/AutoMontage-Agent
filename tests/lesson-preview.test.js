@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { runPreview } = require('../scripts/preview');
+const { acquireHeavySlotSync, heavyQueueConfig, HEAVY_QUEUE_BUSY } = require('../scripts/heavy-queue');
 const {
   planPreview,
   publishCurrentPreview,
@@ -158,11 +159,65 @@ function fakePreviewTools({ calls, failStage = null }) {
         fs.writeFileSync(args[2], 'mixed-preview');
       }
     },
-    probeVideoImpl: () => ({ width: 160, height: 90, fps: 25, duration: 4 }),
+    probeVideoImpl: () => ({ width: 320, height: 180, fps: 25, duration: 4 }),
     openMediaFileImpl: () => { throw new Error('must not open with open=false'); },
     now: () => new Date('2026-08-23T17:05:00.000Z'),
     temporaryId: idSequence(),
+    log: () => {},
   };
+}
+
+test('a busy heavy slot blocks preview without touching the current preview', (t) => {
+  const fixture = makeProject(t);
+  const current = path.join(fixture.workspace.dir, 'previews', 'current-preview.mp4');
+  fs.writeFileSync(current, 'previous-preview');
+  const before = fs.readFileSync(path.join(fixture.workspace.dir, 'project.json'));
+  const config = { ...heavyQueueConfig(), waitMs: 0 };
+  const slot = acquireHeavySlotSync({ label: 'layer render demo', config });
+  t.after(() => slot.release());
+  const calls = [];
+  assert.throws(() => runPreview({ projectDir: fixture.workspace.dir,
+    briefPath: fixture.published.relativePath, open: false }, {
+    ...fakePreviewTools({ calls }),
+    acquireSlotSync: (options) => acquireHeavySlotSync({ ...options, config }),
+  }), { code: HEAVY_QUEUE_BUSY });
+  assert.deepEqual(calls, []);
+  assert.deepEqual(fs.readFileSync(path.join(fixture.workspace.dir, 'project.json')), before);
+  assert.equal(fs.readFileSync(current, 'utf8'), 'previous-preview');
+});
+
+test('preview CLI reports the heavy queue barrier in stderr and exits with code 1', (t) => {
+  const fixture = makeProject(t);
+  const slot = acquireHeavySlotSync({ label: 'layer render demo', config: { ...heavyQueueConfig(), waitMs: 0 } });
+  t.after(() => slot.release());
+  const cli = require('node:child_process').spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'preview.js'), '--project-dir', fixture.workspace.dir,
+    '--brief', fixture.published.relativePath, '--no-open',
+  ], { encoding: 'utf8', timeout: 10000, env: { ...process.env, AUTOMONTAGE_HEAVY_WAIT_MS: '0' } });
+  assert.equal(cli.status, 1);
+  assert.match(cli.stderr, /preview не опубликован: машина занята: layer render demo/u);
+});
+
+for (const failStage of [null, 'decode']) {
+  test(`preview holds its heavy slot through decode and releases after ${failStage || 'publication'}`, (t) => {
+    const fixture = makeProject(t);
+    let held = false;
+    const tools = fakePreviewTools({ calls: [], failStage });
+    const runToolImpl = tools.runToolImpl;
+    const options = { projectDir: fixture.workspace.dir, briefPath: fixture.published.relativePath, open: false };
+    const dependencies = { ...tools,
+      acquireSlotSync({ label }) {
+        assert.equal(label, `preview ${path.basename(fixture.workspace.dir)}`);
+        held = true;
+        return { release() { held = false; } };
+      },
+      runToolImpl(...args) { assert.equal(held, true); return runToolImpl(...args); },
+      publishCurrentPreviewImpl(...args) { assert.equal(held, true); return publishCurrentPreview(...args); },
+    };
+    if (failStage) assert.throws(() => runPreview(options, dependencies), /decode failed/);
+    else runPreview(options, dependencies);
+    assert.equal(held, false);
+  });
 }
 
 test('preview command runs the real composition stages in order without final history', (t) => {
@@ -184,6 +239,80 @@ test('preview command runs the real composition stages in order without final hi
   assert.equal(manifest.renders.length, 0);
   assert.equal(manifest.latestRender, null);
   assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'final', 'preview-test.mp4')), false);
+});
+
+test('blocking preview gates stop publication and keep the previous preview', (t) => {
+  const fixture = makeProject(t, { music: true });
+  const current = path.join(fixture.workspace.dir, 'previews', 'current-preview.mp4');
+  fs.writeFileSync(current, 'previous-preview');
+  const beforeManifest = fs.readFileSync(path.join(fixture.workspace.dir, 'project.json'));
+  const calls = [];
+  let seen = null;
+  const blocked = { block: true, paths: { textPath: 'qa/preview-1.txt' },
+    report: { kind: 'preview', summary: { status: 'fail', fail: 1, warn: 0 }, gates: [] } };
+  const runPreviewGatesImpl = (input) => {
+    seen = { ...input, finishedExists: fs.existsSync(input.finishedPath), musicExists: fs.existsSync(input.musicPath) };
+    return blocked;
+  };
+  assert.throws(() => runPreview({ projectDir: fixture.workspace.dir, briefPath: fixture.published.relativePath, open: false },
+    { ...fakePreviewTools({ calls }), runPreviewGatesImpl }),
+  /preview не опубликован: проверки не пройдены \(qa\/preview-1\.txt\)/);
+  assert.deepEqual(calls, ['preview Remotion', 'preview finish', 'preview music mix']);
+  assert.equal(fs.readFileSync(current, 'utf8'), 'previous-preview');
+  assert.deepEqual(fs.readFileSync(path.join(fixture.workspace.dir, 'project.json')), beforeManifest);
+  assert.ok(!readProjectManifest(fixture.workspace.dir).currentPreview);
+  // Гейты видели настоящие дорожки preview после микса, промежуточные файлы потом убрал finally.
+  assert.equal(seen.projectDir, fixture.workspace.dir);
+  assert.equal(seen.hasMusic, true);
+  assert.equal(seen.finishedExists, true);
+  assert.equal(seen.musicExists, true);
+  assert.ok(seen.mixArgs.includes('--gain'));
+  assert.deepEqual([seen.range.fromSec, seen.range.toSec], [0, 4]);
+  assert.match(seen.sourceSha256, /^[a-f0-9]{64}$/u);
+  assert.equal(seen.brief.title, 'ПРЕДПРОСМОТР');
+  assert.equal(fs.existsSync(seen.finishedPath), false);
+  // Входы отчёта: brief и исходник проекта с sha256, которые preview уже посчитал.
+  const briefFile = path.join(fixture.workspace.dir, fixture.published.relativePath);
+  assert.equal(seen.briefPath, briefFile);
+  assert.equal(seen.briefSha256, require('node:crypto').createHash('sha256').update(fs.readFileSync(briefFile)).digest('hex'));
+  assert.equal(path.relative(fixture.workspace.dir, seen.sourcePath).startsWith('..'), false);
+  assert.ok(fs.statSync(seen.sourcePath).isFile());
+});
+
+test('an unwritten gate report stops a kit preview after printing the verdict; other previews publish', (t) => {
+  const report = { kind: 'preview', summary: { status: 'pass', fail: 0, warn: 0 }, gates: [] };
+  const unwritten = (enforced) => () => ({ report, block: false, enforced, paths: null, writeError: 'не удалось записать в qa/ (EEXIST)' });
+
+  const kit = makeProject(t, { music: true });
+  const current = path.join(kit.workspace.dir, 'previews', 'current-preview.mp4');
+  fs.writeFileSync(current, 'previous-preview');
+  const printed = [];
+  assert.throws(() => runPreview({ projectDir: kit.workspace.dir, briefPath: kit.published.relativePath, open: false },
+    { ...fakePreviewTools({ calls: [] }), log: (line) => printed.push(line), runPreviewGatesImpl: unwritten(true) }),
+  /^Error: preview не опубликован: отчёт проверок не записан \(не удалось записать в qa\/ \(EEXIST\)\)$/u);
+  assert.match(printed.join('\n'), /Проверки \(preview\): всё хорошо/u);
+  assert.equal(fs.readFileSync(current, 'utf8'), 'previous-preview');
+
+  const other = makeProject(t, { music: true });
+  const notes = [];
+  const result = runPreview({ projectDir: other.workspace.dir, briefPath: other.published.relativePath, open: false },
+    { ...fakePreviewTools({ calls: [] }), log: (line) => notes.push(line), runPreviewGatesImpl: unwritten(false) });
+  assert.equal(fs.readFileSync(result.currentPath, 'utf8'), 'mixed-preview');
+  assert.match(notes.join('\n'), /отчёт проверок не записан: не удалось записать в qa\/ \(EEXIST\)/u);
+});
+
+test('the real gates publish a project without kit layers and record a reference-only report', (t) => {
+  const fixture = makeProject(t, { music: true });
+  const printed = [];
+  const result = runPreview({ projectDir: fixture.workspace.dir, briefPath: fixture.published.relativePath, open: false },
+    { ...fakePreviewTools({ calls: [] }), log: (line) => printed.push(line) });
+  assert.equal(fs.readFileSync(result.currentPath, 'utf8'), 'mixed-preview');
+  assert.match(printed.join('\n'), /G8 Голос и музыка/u);
+  const reports = fs.readdirSync(path.join(fixture.workspace.dir, 'qa')).filter((name) => /^preview-.*\.json$/u.test(name));
+  assert.equal(reports.length, 1);
+  const saved = JSON.parse(fs.readFileSync(path.join(fixture.workspace.dir, 'qa', reports[0]), 'utf8'));
+  assert.deepEqual(saved.gates.map((g) => [g.id, g.status]), [['G8', 'skipped']]);
+  assert.doesNotMatch(saved.gates[0].hint, /music\.gainDb|увеличьте|уменьшите/u);
 });
 
 test('render, finish, and music failures preserve the previous current preview byte-for-byte', async (t) => {
@@ -224,3 +353,27 @@ test('runPreview binds the exact bytes parsed before preparation, not a later sa
   assert.deepEqual(fs.readFileSync(path.join(fixture.workspace.dir, 'project.json')), beforeManifest);
   assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'previews/current-preview.mp4')), false);
 });
+
+for (const [width, height, scale, expectedWidth, expectedHeight] of [[2160, 3840, 0.5, 1080, 1920], [1080, 1920, 1, 1080, 1920], [2048, 1080, 0.9375, 1920, 1012], [1080, 2048, 0.9375, 1012, 1920]]) {
+  test(`preview ${width}x${height} renders even H264 dimensions with scale ${scale}`, (t) => {
+    const fixture = makeProject(t);
+    const { prepareLessonPreview } = require('../scripts/lesson/preview');
+    let renderArgs;
+    const tools = fakePreviewTools({ calls: [] });
+    const result = runPreview({ projectDir: fixture.workspace.dir, briefPath: fixture.published.jsonPath, open: false }, {
+      ...tools,
+      prepareLessonPreviewImpl(options) {
+        const prepared = prepareLessonPreview(options);
+        prepared.props.width = width; prepared.props.height = height;
+        return prepared;
+      },
+      runToolImpl(command, args, options) {
+        if (options.stage === 'preview Remotion') renderArgs = args;
+        tools.runToolImpl(command, args, options);
+      },
+      probeVideoImpl: () => ({ width: expectedWidth, height: expectedHeight, fps: 25, duration: 4 }),
+    });
+    assert.ok(renderArgs.includes(`--scale=${scale}`), renderArgs.join(' '));
+    assert.deepEqual([result.metadata.width, result.metadata.height], [expectedWidth, expectedHeight]);
+  });
+}

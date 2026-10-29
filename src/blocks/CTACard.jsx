@@ -22,12 +22,12 @@ export const CTACard = ({ head = 'ЖМИ НА КНОПКУ', btn = 'ССЫЛКА
       ...centerPos(pos, { bottomGap: 150 }),
       transform: `translateY(${y}px) scale(${us})`, opacity: s,
     }}>
-      <div style={{
+      <div data-qa-text="cta-head" style={{
         fontFamily: t.fonts.display, fontWeight: 700, textTransform: 'uppercase',
         fontSize: headSize, color: t.colors.milk,
         textShadow: t.motion.glow ? glowText(t, t.colors.accent) : '0 4px 18px rgba(61,46,36,.5)',
       }}>{head}</div>
-      <div style={{
+      <div data-qa-text="cta-button" style={{
         marginTop: 22, display: 'inline-block', transform: `scale(${pulse})`,
         fontFamily: t.fonts.mono, fontWeight: 700, fontSize: 34, letterSpacing: 2,
         color: t.colors.milk, background: t.colors.accent,

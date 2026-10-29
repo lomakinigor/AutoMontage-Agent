@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const { previewSize } = require('../working-quality');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 
@@ -140,7 +141,8 @@ function publishCurrentPreview(workspace, planned, stagedMp4, metadata, {
   const generatedAt = String(metadata?.generatedAt || '');
   if (!Number.isSafeInteger(metadata?.width) || metadata.width <= 0
     || !Number.isSafeInteger(metadata?.height) || metadata.height <= 0
-    || !Number.isFinite(metadata?.fps) || metadata.fps <= 0 || !generatedAt) {
+    || !Number.isFinite(metadata?.fps) || metadata.fps <= 0 || !generatedAt
+    || (metadata.quality !== undefined && !['final', 'draft'].includes(metadata.quality))) {
     throw new Error('preview metadata is invalid');
   }
   const sha256 = hashFile(fileSystem, staged);
@@ -195,6 +197,7 @@ function publishCurrentPreview(workspace, planned, stagedMp4, metadata, {
         fps: metadata.fps,
         generatedAt,
         sha256,
+        ...(metadata.quality ? { quality: metadata.quality } : {}),
         ...(planned.briefSha256 ? { briefSha256: planned.briefSha256, sourceSha256: planned.sourceSha256 } : {}),
       };
       const nextManifest = structuredClone(transaction.manifest);
@@ -242,10 +245,12 @@ function verifyApprovalPreview(workspace, draft, draftBytes, { fileSystem = fs, 
   const preview = workspace.manifest.currentPreview;
   const draftSha256 = createHash('sha256').update(draftBytes).digest('hex');
   const output = draft.output;
+  // Preview до рабочего 1080p собирался в половину композиции: такой ролик утверждается без пересборки.
+  const sizes = [previewSize(output), { width: Math.round(output.width / 2), height: Math.round(output.height / 2) }];
   if (confirmPreviewViewed !== true || !preview || preview.kind !== 'full'
     || preview.briefPath !== workspace.manifest.currentBrief || preview.briefSha256 !== draftSha256
     || preview.fromSec !== 0 || preview.toSec !== output.durationInFrames / output.fps
-    || preview.width !== Math.round(output.width / 2) || preview.height !== Math.round(output.height / 2)
+    || !sizes.some((size) => preview.width === size.width && preview.height === size.height)
     || preview.fps !== output.fps || !preview.sourceSha256
     || (expectedPreviewSha256 !== undefined && expectedPreviewSha256 !== preview.sha256)) {
     throw new Error('full current preview and explicit preview viewing confirmation required');
@@ -255,7 +260,7 @@ function verifyApprovalPreview(workspace, draft, draftBytes, { fileSystem = fs, 
   try {
     for (const [relative, sha256] of [[preview.filePath, preview.sha256], ['previews/current-preview.mp4', preview.sha256], [workspace.manifest.source.localPath, preview.sourceSha256]]) {
       const filename = resolveProjectPath(workspace.dir, relative, { fileSystem, mustExist: true, type: 'file' });
-      if (relative === workspace.manifest.source.localPath && path.resolve(draft.source) !== filename) throw new Error('preview source mismatch');
+      if (relative === workspace.manifest.source.localPath && path.resolve(draft.kind === 'motion-reel' ? workspace.dir : '.', draft.source) !== filename) throw new Error('preview source mismatch');
       const fd = fileSystem.openSync(filename, fileSystem.constants.O_RDONLY | (fileSystem.constants.O_NOFOLLOW || 0));
       opened.push({fd, filename, relative, sha256, identity:fileSystem.fstatSync(fd, { bigint: true })});
     }
@@ -280,7 +285,7 @@ function verifyApprovalPreview(workspace, draft, draftBytes, { fileSystem = fs, 
       assertIdentity();
     };
     assertCurrent();
-    return { assertCurrent, assertIdentity, close, receipt: { draftSha256, previewSha256:preview.sha256, confirmedAt:new Date().toISOString() } };
+    return { assertCurrent, assertIdentity, close, receipt: { draftSha256, previewSha256:preview.sha256, ...(draft.kind === 'motion-reel' ? { sourceSha256: preview.sourceSha256 } : {}), confirmedAt:new Date().toISOString() } };
   } catch (error) { close(); throw error; }
 }
 module.exports = { planPreview, publishCurrentPreview, verifyApprovalPreview, hashFile };
