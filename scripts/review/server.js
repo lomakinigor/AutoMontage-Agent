@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { createHash, randomBytes, timingSafeEqual } = require('node:crypto');
+const { pipeline } = require('node:stream');
 
 const { validateLessonBrief } = require('../lesson/brief');
 const {
@@ -20,6 +21,7 @@ const {
   resolveProjectPath,
   saveDraftRevision,
 } = require('../project/workspace');
+const { finalizeApproval } = require('../project/approve-final');
 const {
   listReviewAssetRecords,
   resolveReviewAsset,
@@ -360,6 +362,9 @@ function descriptorForPublished(imported, assetFiles) {
 
 function cleanupIdleImportedStages({ projectDir, runtime, fileSystem }) {
   if (runtime.importController.busy) return;
+  // Идущий preview.js сам возьмёт project lease, чтобы опубликовать результат. Уборка из опроса
+  // статуса не должна держать этот lease в тот же миг: иначе публикация падает «stale snapshot».
+  if (runtime.previewJobs?.busy) return;
   let lease;
   try {
     lease = acquireProjectMutationLease(projectDir, { fileSystem });
@@ -493,7 +498,7 @@ function refreshRuntimeState({
     editable,
     waveformAvailable: Boolean(waveformFile),
   });
-  state.assets = refreshedAssets.descriptors;
+  state.assets = base.entry.kind === 'motion-reel' ? [] : refreshedAssets.descriptors;
   runtime.assetFiles = refreshedAssets.assetFiles;
   runtime.state = state;
   return state;
@@ -609,14 +614,23 @@ function serveFile(request, response, file) {
     response.end();
     return;
   }
+  if (response.destroyed) {
+    // serveFile может быть вызван уже с уничтоженным response – например, из маршрута,
+    // который перед вызовом что-то ждёт (await). pipeline() тогда бросает синхронно, не
+    // успев подписаться на события потока, и дескриптор остаётся открытым – закрываем сами.
+    fs.closeSync(descriptor);
+    return;
+  }
   const stream = fs.createReadStream(expected.filePath, {
     fd: descriptor,
     autoClose: true,
     start,
     end,
   });
-  stream.on('error', () => response.destroy());
-  stream.pipe(response);
+  // pipeline, а не stream.pipe(): при отмене запроса (Chrome шлёт новый Range на каждой
+  // перемотке) response уничтожается раньше конца файла – pipe() не закрывает источник за
+  // собой, и файловый дескриптор остаётся висеть. pipeline() уничтожает оба конца всегда.
+  pipeline(stream, response, () => {});
 }
 
 function verifiedCurrentPreview(projectDir) {
@@ -1000,6 +1014,8 @@ function materializeReviewAssets({
         sha256: registered.canonicalSha256,
         fit: selected.fit,
       };
+    // Значение overlay проверяет validateLessonBrief ниже; Review его только переносит.
+    if (Object.hasOwn(selected, 'overlay')) scene.brollMedia.overlay = selected.overlay;
   }
   const validation = validateLessonBrief(materialized);
   if (!validation.ok) rejectRequest(422, 'INVALID_REVIEW_BRIEF');
@@ -1335,13 +1351,15 @@ async function routeRequest({
       }
       if (body.confirmPreviewViewed !== true)
         rejectRequest(400, 'PREVIEW_CONFIRMATION_REQUIRED');
-      approveBrief(current.workspace, current.briefFilePath, {
+      const viewedPreviewSha256 = current.workspace.manifest.currentPreview?.sha256;
+      const approved = approveBrief(current.workspace, current.briefFilePath, {
         root,
         fileSystem,
         confirmPreviewViewed: true,
-        expectedPreviewSha256:
-          current.workspace.manifest.currentPreview?.sha256,
+        expectedPreviewSha256: viewedPreviewSha256,
       });
+      // Просмотренный чистый полный preview становится финалом копированием (#110, D-051).
+      runtime.finalizeApproval(current.workspace, approved.jsonPath, { expectedPreviewSha256: viewedPreviewSha256 });
       const state = refreshRuntimeState({
         root,
         projectDir,
@@ -1638,6 +1656,7 @@ async function startReviewServer({
   brollDownload,
   brollStore,
   previewSpawnImpl,
+  finalizeApprovalImpl = finalizeApproval,
 } = {}) {
   const resolvedRoot = path.resolve(root);
   const resolvedProjectDir = path.resolve(projectDir || '');
@@ -1662,6 +1681,7 @@ async function startReviewServer({
   });
   const assetFiles = buildAssetFiles({ root: resolvedRoot, projectDir: resolvedProjectDir });
   const base = loadReviewBase({ projectDir: resolvedProjectDir });
+  if (base.entry.kind === 'motion-reel') editable = false;
   const state = buildReviewState({
     root: resolvedRoot,
     base,
@@ -1669,7 +1689,7 @@ async function startReviewServer({
     editable,
     waveformAvailable: Boolean(waveformFile),
   });
-  state.assets = [...assetFiles].map(([id, asset]) => descriptorForAsset(id, asset));
+  state.assets = base.entry.kind === 'motion-reel' ? [] : [...assetFiles].map(([id, asset]) => descriptorForAsset(id, asset));
   const nextAssetId = [...assetFiles.keys()].reduce((highest, id) => (
     Math.max(highest, Number(id.slice('asset-'.length)) || 0)
   ), 0) + 1;
@@ -1681,6 +1701,7 @@ async function startReviewServer({
     fileSystem,
     activeImportAbortControllers: new Set(),
     activeImportFinalizers: new Set(),
+    finalizeApproval: finalizeApprovalImpl,
   };
   runtime.previewJobs = createPreviewJobs({root:resolvedRoot,projectDir:resolvedProjectDir,getBase:()=>loadReviewBase({projectDir:resolvedProjectDir}),...(previewSpawnImpl ? { spawnImpl: previewSpawnImpl } : {})});
   runtime.discovery = createBrollDiscovery({

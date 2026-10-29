@@ -67,6 +67,9 @@ jobs:
       - name: Проверить публичное дерево на личные данные и медиа
         run: npm run check:privacy
 
+      - name: Установить Chromium для Node-тестов лид-магнитов
+        run: npx playwright install --with-deps chromium
+
       - name: Запустить тесты
         run: npm test
 
@@ -89,24 +92,58 @@ jobs:
       - name: Установить проверенный FFmpeg
         run: choco install ffmpeg --version=7.1.1 --yes --no-progress --require-checksums
 
-      - name: Проверить FFprobe и portable media lifecycle
+      - name: Проверить FFprobe
         shell: pwsh
-        run: |
-          ffprobe -version
-          node --test tests/filesystem-capabilities.test.js tests/media-probe.test.js tests/opened-media-probe.test.js tests/render-media-bundle-windows.test.js
-          node --test --test-name-pattern='import publishes video when ffprobe average FPS is 0/0|Windows-mode import requires identity and bytes|real tiny images and videos normalize|Windows-mode claim recovery ignores POSIX mode bits|Windows-mode handoff stays exclusive|review save returns a fixed 500|publish final fsyncs through a write-capable handle' tests/review-media-import.test.js tests/review-imported-assets.test.js tests/review-server-security.test.js tests/project-workspace.test.js
+        run: ffprobe -version
+
+      - name: Проверить portable media lifecycle
+        shell: pwsh
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test tests/heavy-queue.test.js tests/heavy-execution-timeout.test.js tests/filesystem-capabilities.test.js tests/media-probe.test.js tests/opened-media-probe.test.js tests/render-media-bundle-windows.test.js
+
+      - name: Проверить motion audio source
+        shell: pwsh
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test tests/motion-source.test.js
+
+      - name: Проверить motion workspace
+        shell: pwsh
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test --test-name-pattern='motion|old video|legacy' tests/project-workspace.test.js
+
+      - name: Проверить сборку motion-слоя и границу plan.js
+        shell: pwsh
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test tests/motion-kit-node.test.js
+
+      - name: Проверить portable import и final publication
+        shell: pwsh
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test --test-name-pattern='import publishes video when ffprobe average FPS is 0/0|Windows-mode import requires identity and bytes|real tiny images and videos normalize|Windows-mode claim recovery ignores POSIX mode bits|Windows-mode handoff stays exclusive|review save returns a fixed 500|publish final fsyncs through a write-capable handle' tests/review-media-import.test.js tests/review-imported-assets.test.js tests/review-server-security.test.js tests/project-workspace.test.js
 
       - name: Проверить portable duration и geometry
         shell: pwsh
-        run: node --test --test-name-pattern='real still image|real mismatched streams|real odd landscape' tests/media-duration-geometry.test.js
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test --test-name-pattern='real still image|real mismatched streams|real odd landscape' tests/media-duration-geometry.test.js
 
       - name: Проверить portable project transactions
         shell: pwsh
-        run: node --test --test-name-pattern='a live process mutation lease blocks|two real processes racing Save|two real processes racing approval|two real processes racing initial brief|approval rejects a stale|approval always runs|direct manifest update rejects|initial brief publication preserves' tests/project-mutation-transaction.test.js
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test --test-name-pattern='a live process mutation lease blocks|two real processes racing Save|two real processes racing approval|two real processes racing initial brief|approval rejects a stale|approval always runs|direct manifest update rejects|initial brief publication preserves' tests/project-mutation-transaction.test.js
 
       - name: Проверить portable import ownership setup
         shell: pwsh
-        run: node --test --test-name-pattern='a real import process keeps a second process out|setup failure removes only|clean setup failure removes|setup root|orphan cleanup never treats' tests/review-import-ownership.test.js
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test --test-name-pattern='a real import process keeps a second process out|setup failure removes only|clean setup failure removes|setup root|orphan cleanup never treats' tests/review-import-ownership.test.js
+
+      - name: Проверить пульт роликов
+        shell: pwsh
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test (Get-ChildItem tests/pult-*.test.js).FullName
+
+      - name: Проверить кодер libx264 для настоящих тестов склейки
+        shell: pwsh
+        run: |
+          $encoders = (ffmpeg -hide_banner -encoders) | Out-String
+          if ($LASTEXITCODE -ne 0 -or $encoders -notmatch '\blibx264\b') {
+            Write-Output '::error::FFmpeg без libx264: настоящие тесты склейки дублей пропустились бы молча'
+            exit 1
+          }
+
+      - name: Проверить склейку дублей на настоящем FFmpeg 7
+        shell: pwsh
+        run: node --require ./tests/helpers/heavy-queue-isolation.cjs --test tests/trim-media-real.test.js tests/takes-master-media.test.js tests/take-pauses.test.js tests/project-takes.test.js tests/rough-cut-media.test.js
 
   review-ui:
     name: Node 20 · Review Chromium tests
@@ -144,5 +181,32 @@ jobs:
       - name: Запустить Review browser tests
         run: npm run test:review-ui
 
+      # Иначе первый настоящий preview скачивает браузер Remotion внутри ожидания теста.
+      - name: Подготовить браузер Remotion
+        run: npx remotion browser ensure
+
       - name: Проверить настоящий preview, approval и final на синтетических медиа
-        run: node --test --test-concurrency=1 tests/broll-preview-e2e.test.js tests/video-broll-e2e.test.js tests/custom-face-media-real.test.js
+        run: node --test --test-concurrency=1 tests/broll-preview-e2e.test.js tests/video-broll-e2e.test.js tests/custom-face-media-real.test.js tests/layer-fast-preview-equivalence.test.js
+
+  motion-smoke:
+    name: Linux · credential-free motion release smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies and FFmpeg
+        run: |
+          npm ci --no-audit --no-fund
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+
+      - name: Prepare Remotion browser
+        run: npx remotion browser ensure
+
+      - name: Render synthetic motion demo through preview, approval and final
+        run: npm run smoke:release -- --motion-only

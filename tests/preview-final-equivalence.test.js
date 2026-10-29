@@ -31,6 +31,9 @@ test('preview/final frame comparison rescales preview and masks only documented 
   ]);
   assert.match(args[args.indexOf('-filter_complex') + 1], /scale=1920:1080:flags=lanczos/);
   assert.match(args[args.indexOf('-filter_complex') + 1], /drawbox=x=1344:y=0:w=576:h=173/);
+  // Регрессия #110: полный (pc) и ограниченный (tv) диапазон сравниваются после приведения к одному.
+  assert.match(args[args.indexOf('-filter_complex') + 1], /\[0:v\]scale=1920:1080:flags=lanczos:out_range=tv,/);
+  assert.match(args[args.indexOf('-filter_complex') + 1], /\[1:v\]scale=out_range=tv,format=yuv444p/);
   assert.equal(args.at(-1), '-');
 });
 
@@ -141,6 +144,24 @@ test('benchmark cycle times Remotion while still finishing the compared artifact
   assert.equal(calls[0][0], 'render');
   assert.match(calls[0][2].find((value) => value.endsWith('.mp4')), /preview-warm\.raw\.mp4$/);
   assert.equal(calls[1][0], 'finish');
-  assert.deepEqual(calls[1][2].slice(-4), ['--hdrfix', 'auto', '--audio-advance-ms', '42.5']);
+  assert.deepEqual(calls[1][2].slice(-4), ['--hdrfix', 'auto', '--audio-advance-ms', '0']);
   assert.equal(calls[1][2][1], cycle.output);
+});
+
+test('regression: the same picture in full (pc) and limited (tv) range compares as equal on real ffmpeg', (t) => {
+  const { execFileSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'automontage-range-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const tv = path.join(dir, 'tv.mp4');
+  const pc = path.join(dir, 'pc.mp4');
+  const encode = (output, range) => execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=320x180:r=25:d=1',
+    '-vf', `scale=out_range=${range}`, '-color_range', range, '-c:v', 'libx264', '-crf', '12', '-pix_fmt', range === 'pc' ? 'yuvj420p' : 'yuv420p', output]);
+  try { encode(tv, 'tv'); encode(pc, 'pc'); } catch (error) { t.skip(`ffmpeg недоступен: ${error.message}`); return; }
+  const result = verifyPreviewFinalEquivalence({
+    previewPath: tv, finalPath: pc, width: 320, height: 180, controlFramesSec: [0.2, 0.6], threshold: 0.97,
+  });
+  assert.ok(result.minimumScore >= 0.97, String(result.minimumScore));
 });

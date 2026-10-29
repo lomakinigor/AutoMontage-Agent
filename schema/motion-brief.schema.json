@@ -1,0 +1,349 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://automontage.local/schema/motion-brief.schema.json",
+  "title": "AutoMontage motion-reel brief",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "status", "source", "theme", "title", "output", "scenes"],
+  "properties": {
+    "version": { "const": 1 },
+    "kind": { "const": "motion-reel" },
+    "status": { "enum": ["draft", "approved"] },
+    "audioRole": {
+      "description": "narration (default): source audio is speech; music: source audio is the final premixed soundtrack without speech",
+      "enum": ["narration", "music"]
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "draftSha256",
+        "previewSha256",
+        "confirmedAt",
+        "sourceSha256"
+      ],
+      "properties": {
+        "draftSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "previewSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "confirmedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+        },
+        "sourceSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "gainDb",
+        "sha256"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gainDb": {
+          "type": "number",
+          "minimum": -60,
+          "maximum": 0
+        },
+        "fadeInSec": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "fadeOutSec": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "startSec": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "playbackRate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "ducking": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "thresholdDb": {
+              "type": "number",
+              "minimum": -60,
+              "maximum": 0
+            },
+            "ratio": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "attackMs": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 2000
+            },
+            "releaseMs": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 9000
+            }
+          }
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "source": { "$ref": "#/definitions/projectPath" },
+    "theme": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "style": {
+      "description": "Optional frame styling. texture: none (default) or subtle (grain, background drift, card sheen on entry)",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "texture": { "enum": ["none", "subtle"], "default": "none" }
+      }
+    },
+    "title": { "$ref": "#/definitions/titleText" },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aspect", "width", "height", "fps", "durationInFrames"],
+      "properties": {
+        "aspect": { "enum": ["vertical", "horizontal"] },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 120 },
+        "durationInFrames": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/kineticTitleScene" },
+          { "$ref": "#/definitions/cardScene" },
+          { "$ref": "#/definitions/stepsScene" },
+          { "$ref": "#/definitions/listScene" },
+          { "$ref": "#/definitions/counterScene" },
+          { "$ref": "#/definitions/mediaScene" },
+          { "$ref": "#/definitions/ctaScene" },
+          { "$ref": "#/definitions/chartScene" }
+        ]
+      }
+    }
+  },
+  "allOf": [{"if":{"properties":{"status":{"const":"approved"}}},"then":{"required":["approval"]}}],
+  "definitions": {
+    "projectPath": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "titleText": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "shortText": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "captionText": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "bodyText": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "startTime": { "type": "number", "minimum": 0 },
+    "endTime": { "type": "number", "exclusiveMinimum": 0 },
+    "sceneTransition": {
+      "description": "Вход в эту сцену из предыдущей. cut – жёсткая склейка (по умолчанию). frames – длительность в кадрах эталона 25 fps (6–15, по умолчанию 10), пересчитывается под FPS ролика. direction – куда движется кадр, только для slide и wipe (по умолчанию left), left – новая сцена въезжает справа. Сцена начинается в start: fade, slide и wipe в этом кадре только начинают её проявлять; предыдущая сцена тянется до start (через паузу, если она есть) и на хвост перехода стоп-кадром. push – жёсткая склейка ровно в start с коротким наездом на обеих сценах и вспышкой цвета #f5f2ed (до 20 %), начинается на floor(frames/2) кадров раньше start.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["cut", "fade", "slide", "wipe", "push"] },
+        "frames": {
+          "description": "Длительность в кадрах эталона 25 fps (6–15, по умолчанию 10), не в кадрах ролика: при 60 fps 15 означает 36 кадров ролика. Поэтому пределы не зависят от FPS.",
+          "type": "integer", "minimum": 6, "maximum": 15
+        },
+        "direction": { "enum": ["left", "right", "up", "down"] }
+      }
+    },
+    "kineticTitleScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene", "start", "end", "text"],
+      "properties": {
+        "scene": { "const": "kinetic-title" },
+        "start": { "$ref": "#/definitions/startTime" },
+        "end": { "$ref": "#/definitions/endTime" },
+        "transition": { "$ref": "#/definitions/sceneTransition" },
+        "caption": { "$ref": "#/definitions/captionText" },
+        "text": { "$ref": "#/definitions/titleText" },
+        "emphasis": { "type": "string", "minLength": 1, "maxLength": 40 }
+      }
+    },
+    "cardScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene", "start", "end", "title"],
+      "properties": {
+        "scene": { "const": "card" },
+        "start": { "$ref": "#/definitions/startTime" },
+        "end": { "$ref": "#/definitions/endTime" },
+        "transition": { "$ref": "#/definitions/sceneTransition" },
+        "caption": { "$ref": "#/definitions/captionText" },
+        "title": { "$ref": "#/definitions/shortText" },
+        "body": { "$ref": "#/definitions/bodyText" }
+      }
+    },
+    "stepsScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene", "start", "end", "steps"],
+      "properties": {
+        "scene": { "const": "steps" },
+        "start": { "$ref": "#/definitions/startTime" },
+        "end": { "$ref": "#/definitions/endTime" },
+        "transition": { "$ref": "#/definitions/sceneTransition" },
+        "caption": { "$ref": "#/definitions/captionText" },
+        "title": { "$ref": "#/definitions/shortText" },
+        "steps": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": { "type": "string", "minLength": 1, "maxLength": 60 }
+        }
+      }
+    },
+    "listScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene", "start", "end", "items"],
+      "properties": {
+        "scene": { "const": "list" },
+        "start": { "$ref": "#/definitions/startTime" },
+        "end": { "$ref": "#/definitions/endTime" },
+        "transition": { "$ref": "#/definitions/sceneTransition" },
+        "caption": { "$ref": "#/definitions/captionText" },
+        "title": { "$ref": "#/definitions/shortText" },
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+        }
+      }
+    },
+    "counterScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene", "start", "end", "label", "value"],
+      "properties": {
+        "scene": { "const": "counter" },
+        "start": { "$ref": "#/definitions/startTime" },
+        "end": { "$ref": "#/definitions/endTime" },
+        "transition": { "$ref": "#/definitions/sceneTransition" },
+        "caption": { "$ref": "#/definitions/captionText" },
+        "label": { "$ref": "#/definitions/shortText" },
+        "value": { "type": "number" },
+        "prefix": { "type": "string", "maxLength": 16 },
+        "suffix": { "type": "string", "maxLength": 16 },
+        "layout": { "description": "Где стоят prefix и suffix: inline – в одной строке с числом (по умолчанию), stack – стопкой над числом и под ним.", "enum": ["inline", "stack"] }
+      }
+    },
+    "chartScene": {
+      "description": "График из 2–8 точек. Значения и подписи – дословно из ТЗ. bar – столбики, line – линия с точками, bar-to-line – столбики сжимаются в точки, затем прорисовывается линия. highlight – индекс точки (с нуля), выделенной акцентом.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene", "start", "end", "title", "chartType", "points"],
+      "properties": {
+        "scene": { "const": "chart" },
+        "start": { "$ref": "#/definitions/startTime" },
+        "end": { "$ref": "#/definitions/endTime" },
+        "transition": { "$ref": "#/definitions/sceneTransition" },
+        "caption": { "$ref": "#/definitions/captionText" },
+        "title": { "$ref": "#/definitions/shortText" },
+        "chartType": { "enum": ["bar", "line", "bar-to-line"] },
+        "points": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "value"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1, "maxLength": 24 },
+              "value": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "unit": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "highlight": { "type": "integer", "minimum": 0, "maximum": 7 }
+      }
+    },
+    "mediaScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene", "start", "end", "media"],
+      "properties": {
+        "scene": { "const": "media" },
+        "start": { "$ref": "#/definitions/startTime" },
+        "end": { "$ref": "#/definitions/endTime" },
+        "transition": { "$ref": "#/definitions/sceneTransition" },
+        "caption": { "$ref": "#/definitions/captionText" },
+        "overlayText": { "$ref": "#/definitions/titleText" },
+        "media": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "src", "sha256", "fit"],
+              "properties": {
+                "kind": { "const": "image" },
+                "src": { "$ref": "#/definitions/projectPath" },
+                "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "fit": { "enum": ["contain", "cover"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "src", "sha256", "fit"],
+              "properties": {
+                "kind": { "const": "video" },
+                "src": { "$ref": "#/definitions/projectPath" },
+                "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "fit": { "enum": ["contain", "cover"] },
+                "trimStartSec": { "type": "number", "minimum": 0 },
+                "audioMode": { "enum": ["mute", "mix", "replace"] },
+                "frame": { "enum": ["card", "full"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ctaScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene", "start", "end", "title", "action"],
+      "properties": {
+        "scene": { "const": "cta" },
+        "start": { "$ref": "#/definitions/startTime" },
+        "end": { "$ref": "#/definitions/endTime" },
+        "transition": { "$ref": "#/definitions/sceneTransition" },
+        "caption": { "$ref": "#/definitions/captionText" },
+        "title": { "$ref": "#/definitions/shortText" },
+        "action": { "$ref": "#/definitions/shortText" },
+        "handle": { "$ref": "#/definitions/shortText" }
+      }
+    }
+  }
+}

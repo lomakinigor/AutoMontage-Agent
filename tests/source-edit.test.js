@@ -56,6 +56,59 @@ function makeProject(t) {
   return { root, original, workspace, editPath };
 }
 
+for (const takes of [false, true]) {
+  test(`master ${takes ? 'takes' : 'cuts'} acquires the heavy slot before the project lease and releases on encode failure`, (t) => {
+    const fixture = makeProject(t);
+    if (takes) {
+      const second = path.join(fixture.root, 'second.mp4');
+      fs.writeFileSync(second, 'SECOND-TAKE');
+      require('../scripts/project/takes').addTakes({ projectDir: fixture.workspace.dir, files: [second] }, {
+        probeVideoImpl: () => ({ duration: 8, fps: 25, width: 1920, height: 1080 }),
+        probeMediaPathImpl: () => ({ mediaKind: 'video', width: 1920, height: 1080, rotation: 0,
+          hasAudio: true, audioSampleRate: 48000, audioChannels: 2, videoDurationSec: 8, audioDurationSec: 8 }),
+        transcribeImpl: () => [{ start: 0, end: 8, text: 'слово', words: [{ w: 'слово', s: 0.5, e: 1 }] }],
+      });
+      fs.writeFileSync(fixture.editPath, JSON.stringify({ version: 1, kind: 'takes', sourceRevision: 1,
+        ranges: [{ take: 'take-01', start: 0, end: 2, beat: 'HOOK', reason: 'хук' }] }));
+    }
+    const events = [];
+    let held = false;
+    const fileSystem = { ...fs, linkSync(source, filename) {
+      if (path.basename(filename) === '.project-mutation.lock') {
+        events.push('project lease');
+        assert.equal(held, true);
+      }
+      return fs.linkSync(source, filename);
+    } };
+    const failEncode = () => {
+      assert.equal(held, true);
+      events.push('encode');
+      throw new Error('encode failed');
+    };
+    assert.throws(() => buildMaster({ projectDir: fixture.workspace.dir, editPath: fixture.editPath }, {
+      fileSystem,
+      acquireSlotSync({ label }) {
+        assert.equal(label, `master ${path.basename(fixture.workspace.dir)}`);
+        assert.equal(fs.existsSync(path.join(fixture.workspace.dir, '.project-mutation.lock')), false);
+        events.push('slot');
+        held = true;
+        return { release() {
+          assert.equal(fs.existsSync(path.join(fixture.workspace.dir, '.project-mutation.lock')), false);
+          events.push('release'); held = false;
+        } };
+      },
+      runTrimImpl: failEncode,
+      runSegmentsTrimImpl: failEncode,
+      readTakeLevelsImpl: () => null,
+      probeVideoImpl: () => ({ duration: 8, fps: 25, width: 1920, height: 1080 }),
+      probeMediaPathImpl: () => ({ mediaKind: 'video', width: 1920, height: 1080, rotation: 0,
+        hasAudio: true, audioSampleRate: 48000, audioChannels: 2, videoDurationSec: 8, audioDurationSec: 8 }),
+    }), /encode failed/);
+    assert.equal(held, false);
+    assert.deepEqual(events, ['slot', 'project lease', 'encode', 'release']);
+  });
+}
+
 test('source edit accepts only ordered frame-aligned ranges for the active revision', () => {
   assert.deepEqual(validateSourceEdit(validEdit(), {
     sourceRevision: 1,
@@ -144,6 +197,9 @@ test('master publication preserves the original and selects immutable source and
         ? { duration: 8, fps: 25, width: 1920, height: 1080 }
         : { duration: 6, fps: 25, width: 1920, height: 1080 };
     },
+    probeMediaPathImpl() {
+      return { width: 1920, height: 1080, rotation: 0 };
+    },
     now: () => new Date('2026-08-23T13:00:00.000Z'),
     temporaryId: () => 'master-test',
   });
@@ -191,6 +247,9 @@ test('failed master encode leaves active source transcript preview and draft unc
   }, {
     runTrimImpl() { throw new Error('encode failed'); },
     probeVideoImpl() { return { duration: 8, fps: 25, width: 1920, height: 1080 }; },
+    probeMediaPathImpl() {
+      return { width: 1920, height: 1080, rotation: 0 };
+    },
     temporaryId: () => 'failed-master',
   }), /encode failed/);
 
@@ -198,4 +257,189 @@ test('failed master encode leaves active source transcript preview and draft unc
   assert.deepEqual(fs.readFileSync(path.join(fixture.workspace.dir, 'transcript', 'words.json')), transcriptBefore);
   assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'input', 'source-v02.mp4')), false);
   assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'transcript', 'words-v02.json')), false);
+});
+
+test('a partial master stage file left by a crashed encode is removed', (t) => {
+  const fixture = makeProject(t);
+  const before = fs.readFileSync(path.join(fixture.workspace.dir, 'project.json'));
+
+  assert.throws(() => buildMaster({
+    projectDir: fixture.workspace.dir,
+    editPath: fixture.editPath,
+  }, {
+    runTrimImpl(options) {
+      // Simulates ffmpeg writing output before crashing partway through the encode: the stage
+      // file exists on disk, but encode() never returns, so fsyncFile() never runs either.
+      fs.writeFileSync(options.output, 'PARTIAL');
+      throw new Error('encode crashed');
+    },
+    probeVideoImpl() { return { duration: 8, fps: 25, width: 1920, height: 1080 }; },
+    probeMediaPathImpl() {
+      return { width: 1920, height: 1080, rotation: 0 };
+    },
+    temporaryId: () => 'partial-stage',
+  }), /encode crashed/);
+
+  assert.deepEqual(fs.readFileSync(path.join(fixture.workspace.dir, 'project.json')), before);
+  const inputEntries = fs.readdirSync(path.join(fixture.workspace.dir, 'input'));
+  assert.equal(inputEntries.some((name) => name.startsWith('.source-v')), false);
+});
+
+test('master keeps committed revision files when releasing the project lock fails', (t) => {
+  const fixture = makeProject(t);
+  const failingFileSystem = {
+    ...fs,
+    unlinkSync(target) {
+      if (path.basename(target) === '.project-mutation.lock') {
+        throw Object.assign(new Error('EPERM: operation not permitted, unlink'), { code: 'EPERM' });
+      }
+      return fs.unlinkSync(target);
+    },
+  };
+
+  assert.throws(() => buildMaster({
+    projectDir: fixture.workspace.dir,
+    editPath: fixture.editPath,
+  }, {
+    fileSystem: failingFileSystem,
+    runTrimImpl(options) {
+      fs.writeFileSync(options.output, 'NEW-MASTER');
+    },
+    runToolImpl() {},
+    probeVideoImpl(filename) {
+      return filename.endsWith('source.mp4')
+        ? { duration: 8, fps: 25, width: 1920, height: 1080 }
+        : { duration: 6, fps: 25, width: 1920, height: 1080 };
+    },
+    probeMediaPathImpl() {
+      return { width: 1920, height: 1080, rotation: 0 };
+    },
+    now: () => new Date('2026-08-23T13:00:00.000Z'),
+    temporaryId: () => 'lock-release-fail',
+  }), /EPERM/);
+
+  const manifest = readProjectManifest(fixture.workspace.dir);
+  assert.equal(manifest.source.localPath, 'input/source-v02.mp4');
+  assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'input', 'source-v02.mp4')), true);
+  assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'transcript', 'words-v02.json')), true);
+});
+
+test('master accepts an auto-rotated portrait source whose output is stored upright', (t) => {
+  const fixture = makeProject(t);
+  const probeMediaPathCalls = [];
+  const result = buildMaster({
+    projectDir: fixture.workspace.dir,
+    editPath: fixture.editPath,
+  }, {
+    runTrimImpl(options) {
+      fs.writeFileSync(options.output, 'ROTATED-MASTER');
+    },
+    runToolImpl() {},
+    probeVideoImpl(filename) {
+      return filename.endsWith('source.mp4')
+        ? { duration: 8, fps: 25, width: 1920, height: 1080 }
+        : { duration: 6, fps: 25, width: 1080, height: 1920 };
+    },
+    probeMediaPathImpl(filename, options) {
+      probeMediaPathCalls.push({ filename, options });
+      return { width: 1920, height: 1080, rotation: 90 };
+    },
+    now: () => new Date('2026-08-23T13:00:00.000Z'),
+    temporaryId: () => 'rotated-master',
+  });
+  assert.equal(result.revision, 2);
+  assert.equal(readProjectManifest(fixture.workspace.dir).source.localPath, 'input/source-v02.mp4');
+  assert.equal(probeMediaPathCalls.length, 1);
+  assert.equal(probeMediaPathCalls[0].filename, path.join(fixture.workspace.dir, 'input', 'source.mp4'));
+  assert.equal(probeMediaPathCalls[0].options.stage, 'master source media probe');
+  assert.equal(probeMediaPathCalls[0].options.containerDurationFallback, true);
+});
+
+test('master rejects an output stored in the encoded size of a rotated source', (t) => {
+  const fixture = makeProject(t);
+  assert.throws(() => buildMaster({
+    projectDir: fixture.workspace.dir,
+    editPath: fixture.editPath,
+  }, {
+    runTrimImpl(options) {
+      fs.writeFileSync(options.output, 'UNROTATED-MASTER');
+    },
+    runToolImpl() {},
+    probeVideoImpl(filename) {
+      return filename.endsWith('source.mp4')
+        ? { duration: 8, fps: 25, width: 1920, height: 1080 }
+        : { duration: 6, fps: 25, width: 1920, height: 1080 };
+    },
+    probeMediaPathImpl() {
+      return { width: 1920, height: 1080, rotation: 90 };
+    },
+    now: () => new Date('2026-08-23T13:00:00.000Z'),
+    temporaryId: () => 'rotated-master-rejected',
+  }), /master output does not match the source edit/);
+  assert.equal(readProjectManifest(fixture.workspace.dir).source.localPath, 'input/source.mp4');
+  assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'input', 'source-v02.mp4')), false);
+});
+
+test('master rejects a portrait output from an unrotated landscape source', (t) => {
+  const fixture = makeProject(t);
+  assert.throws(() => buildMaster({
+    projectDir: fixture.workspace.dir,
+    editPath: fixture.editPath,
+  }, {
+    runTrimImpl(options) {
+      fs.writeFileSync(options.output, 'PORTRAIT-MASTER');
+    },
+    runToolImpl() {},
+    probeVideoImpl(filename) {
+      return filename.endsWith('source.mp4')
+        ? { duration: 8, fps: 25, width: 1920, height: 1080 }
+        : { duration: 6, fps: 25, width: 1080, height: 1920 };
+    },
+    probeMediaPathImpl() {
+      return { width: 1920, height: 1080, rotation: 0 };
+    },
+    now: () => new Date('2026-08-23T13:00:00.000Z'),
+    temporaryId: () => 'landscape-master-rejected',
+  }), /master output does not match the source edit/);
+  assert.equal(readProjectManifest(fixture.workspace.dir).source.localPath, 'input/source.mp4');
+  assert.equal(fs.existsSync(path.join(fixture.workspace.dir, 'input', 'source-v02.mp4')), false);
+});
+
+test('master quality defaults to 1080p and CLI aliases normalize', () => {
+  const { parseMasterOptions } = require('../scripts/project/build-master');
+  assert.equal(parseMasterOptions(['--project-dir', 'p', '--edit', 'e']).quality, '1080p');
+  assert.equal(parseMasterOptions(['--project-dir', 'p', '--edit', 'e', '--quality', '4k']).quality, 'source');
+  assert.throws(() => parseMasterOptions(['--project-dir', 'p', '--edit', 'e', '--quality', '720p']), /неизвестное качество/);
+});
+for (const [label, quality, media, target] of [
+  ['anamorphic', undefined, { width: 2880, height: 2160, rotation: 0, sampleAspectRatio: '4:3' }, { width: 1920, height: 1080 }],
+  ['rotated anamorphic', undefined, { width: 2880, height: 2160, rotation: 90, sampleAspectRatio: '4:3' }, { width: 1080, height: 1920 }],
+  ['portrait', undefined, { width: 2160, height: 3840, rotation: 0 }, { width: 1080, height: 1920 }],
+  ['source', 'source', { width: 2160, height: 3840, rotation: 0 }, { width: 2160, height: 3840 }],
+  ['rotated phone', undefined, { width: 3840, height: 2160, rotation: 90 }, { width: 1080, height: 1920 }],
+  ['landscape', undefined, { width: 3840, height: 2160, rotation: 0 }, { width: 1920, height: 1080 }],
+]) {
+  test(`master publishes the working geometry for ${label}`, (t) => {
+    const fixture = makeProject(t);
+    let trim;
+    const result = buildMaster({ projectDir: fixture.workspace.dir, editPath: fixture.editPath, quality }, {
+      runTrimImpl(options) { trim = options; fs.writeFileSync(options.output, 'NEW-MASTER'); },
+      runToolImpl() {},
+      probeVideoImpl: (file) => file.endsWith('source.mp4')
+        ? { ...media, duration: 8, fps: 25 } : { ...target, duration: 6, fps: 25 },
+      probeMediaPathImpl: () => ({ ...media, mediaKind: 'video' }),
+    });
+    assert.deepEqual(trim.scale, quality === 'source' ? null : target);
+    assert.equal(result.revision, 2);
+  });
+}
+test('master rejects native output when working 1080p was requested', (t) => {
+  const fixture = makeProject(t);
+  const before = fs.readFileSync(path.join(fixture.workspace.dir, 'project.json'));
+  assert.throws(() => buildMaster({ projectDir: fixture.workspace.dir, editPath: fixture.editPath }, {
+    runTrimImpl(options) { fs.writeFileSync(options.output, 'WRONG-SIZE'); }, runToolImpl() {},
+    probeVideoImpl: (file) => ({ width: 2160, height: 3840, duration: file.endsWith('source.mp4') ? 8 : 6, fps: 25 }),
+    probeMediaPathImpl: () => ({ width: 2160, height: 3840, rotation: 0, mediaKind: 'video' }),
+  }), /master output does not match the source edit/);
+  assert.deepEqual(fs.readFileSync(path.join(fixture.workspace.dir, 'project.json')), before);
 });

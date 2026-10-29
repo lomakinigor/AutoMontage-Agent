@@ -16,7 +16,7 @@ const {
 } = require('../scripts/project/preview-workspace');
 const { validateLessonBrief } = require('../scripts/lesson/brief');
 const hash = (x) => createHash('sha256').update(x).digest('hex');
-function fixture(t) {
+function fixture(t, {width=320,height=180,previewWidth=width,previewHeight=height} = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'broll-gate-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const source = path.join(dir, 'source.mp4');
@@ -35,8 +35,8 @@ function fixture(t) {
     brollReviewPolicy: 'preview-required',
     output: {
       aspect: 'horizontal',
-      width: 320,
-      height: 180,
+      width,
+      height,
       fps: 25,
       durationInFrames: 100,
     },
@@ -53,8 +53,8 @@ function fixture(t) {
     const staged = path.join(workspace.dir, 'previews', 'stage.mp4');
     fs.writeFileSync(staged, 'preview bytes');
     return publishCurrentPreview(workspace, plan, staged, {
-      width: 160,
-      height: 90,
+      width: previewWidth,
+      height: previewHeight,
       fps: 25,
       generatedAt: new Date().toISOString(),
     });
@@ -129,8 +129,8 @@ test('preview publication rejects same-path draft edits after planning', (t) => 
   assert.throws(
     () =>
       publishCurrentPreview(f.workspace, plan, staged, {
-        width: 160,
-        height: 90,
+        width: 320,
+        height: 180,
         fps: 25,
         generatedAt: new Date().toISOString(),
       }),
@@ -203,6 +203,7 @@ test('preview jobs use fixed argv, reject stale/busy input and bound failed outp
   assert.throws(() => jobs.start({ ...input, baseHash: 'wrong' }), /STALE/);
   const job = jobs.start(input);
   assert.equal(launched.options.shell, false);
+  assert.equal(launched.options.env.AUTOMONTAGE_HEAVY_WAIT_MS, '0');
   for (const name of [
     'PEXELS_API_KEY',
     'PIXABAY_API_KEY',
@@ -227,6 +228,57 @@ test('preview jobs use fixed argv, reject stale/busy input and bound failed outp
   child.emit('close', 1);
   await jobs.waitIdle();
   assert.equal(jobs.get(second.jobId).error, 'PREVIEW_CANCELLED');
+});
+
+// Барьер preview (scripts/qa/preview-gates.js) остановил preview: Review показывает его русскую причину, а не
+// голый PREVIEW_FAILED. Абсолютные пути проекта и движка в причину не попадают; прочие сбои – как раньше.
+test('a preview blocked by the QA barrier surfaces its Russian reason without paths', async () => {
+  const { EventEmitter } = require('node:events');
+  const { PassThrough } = require('node:stream');
+  const { createPreviewJobs } = require('../scripts/review/preview-jobs');
+  const base = {
+    entry: { revision: 1 }, baseHash: 'a', manifestHash: 'b', briefFilePath: '/test/brief.json',
+    brief: { status: 'draft', output: { fps: 25, durationInFrames: 100 }, scenes: [{ start: 0, end: 2 }] },
+  };
+  let child;
+  const jobs = createPreviewJobs({
+    root: '/engine/root', projectDir: '/srv/automontage/projects/client-x', getBase: () => base,
+    spawnImpl: () => {
+      child = new EventEmitter();
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      return child;
+    },
+  });
+  const input = { baseRevision: 1, baseHash: 'a', manifestHash: 'b', kind: 'full' };
+  const run = async (stderr, code = 1) => {
+    const { jobId } = jobs.start(input);
+    child.stdout.write('Проверки (preview): СТОП\n');
+    child.stderr.write(stderr);
+    await new Promise((resolve) => setImmediate(resolve));
+    child.emit('close', code);
+    await jobs.waitIdle();
+    return jobs.get(jobId);
+  };
+  const blocked = await run('❌ preview отменён: preview не опубликован: проверки не пройдены '
+    + '(/srv/automontage/projects/client-x/qa/preview-20260929-120000-01.txt)\n');
+  assert.equal(blocked.status, 'failed');
+  assert.equal(blocked.error, 'PREVIEW_BLOCKED');
+  assert.equal(blocked.reason, 'проверки не пройдены (qa/preview-20260929-120000-01.txt)');
+  const unwritten = await run('❌ preview отменён: preview не опубликован: отчёт проверок не записан '
+    + "(не удалось записать в qa/: qa/ должна быть папкой проекта, а не ссылкой или файлом – уберите её и верните настоящую папку qa/)\n");
+  assert.equal(unwritten.error, 'PREVIEW_BLOCKED');
+  assert.match(unwritten.reason, /^отчёт проверок не записан \(не удалось записать в qa\/: qa\/ должна быть папкой проекта/u);
+  const busy = await run('preview не опубликован: машина занята: layer render demo\n');
+  assert.equal(busy.error, 'PREVIEW_BLOCKED');
+  assert.equal(busy.reason, 'машина занята: layer render demo');
+  // Любой другой сбой – прежний код без текста: сырой stderr в браузер не уходит.
+  const other = await run('❌ preview отменён: ENOENT /engine/root/node_modules/.bin/remotion\n');
+  assert.equal(other.error, 'PREVIEW_FAILED');
+  assert.equal(Object.hasOwn(other, 'reason'), false);
+  const ok = await run('', 0);
+  assert.equal(ok.status, 'complete');
+  assert.equal(Object.hasOwn(ok, 'reason'), false);
 });
 
 for (const stage of ['approval-json', 'approval-manifest'])
@@ -563,6 +615,173 @@ test(
   },
 );
 
+test(
+  'the server takes no project lease while a preview job runs',
+  { timeout: 20000 },
+  async (t) => {
+    const { startReviewServer } = require('../scripts/review/server');
+    const { spawn } = require('node:child_process');
+    const f = fixture(t);
+    fs.writeFileSync(path.join(f.workspace.dir, 'transcript/words.json'), '[]');
+    const leasePath = path.join(f.workspace.dir, '.project-mutation.lock');
+    let jobRunning = false;
+    let leasesDuringJob = 0;
+    // Lease берётся жёсткой ссылкой на project-mutation.lock: считаем такие ссылки сервера,
+    // пока preview-процесс жив.
+    const fileSystem = new Proxy(fs, {
+      get(target, key) {
+        if (key !== 'linkSync') return Reflect.get(target, key);
+        return (existing, destination) => {
+          if (jobRunning && path.resolve(String(destination)) === leasePath) leasesDuringJob += 1;
+          return target.linkSync(existing, destination);
+        };
+      },
+    });
+    const session = await startReviewServer({
+      projectDir: f.workspace.dir,
+      editable: true,
+      open: false,
+      fileSystem,
+      runToolImpl: () => ({ status: 1 }),
+      previewSpawnImpl(command, args, options) {
+        const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1200)'], options);
+        jobRunning = true;
+        child.once('close', () => {
+          jobRunning = false;
+        });
+        return child;
+      },
+    });
+    try {
+      const headers = {
+        Authorization: `Bearer ${session.token}`,
+        Origin: session.origin,
+        'Content-Type': 'application/json',
+      };
+      const state = await (
+        await fetch(session.origin + '/api/state', { headers })
+      ).json();
+      const response = await fetch(session.origin + '/api/broll/preview', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          baseRevision: state.session.baseRevision,
+          baseHash: state.session.baseHash,
+          manifestHash: state.session.manifestHash,
+          kind: 'full',
+        }),
+      });
+      assert.equal(response.status, 202);
+      const { jobId } = await response.json();
+      const deadline = Date.now() + 10000;
+      let job;
+      let polls = 0;
+      do {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        job = await (
+          await fetch(`${session.origin}/api/broll/preview-job?id=${encodeURIComponent(jobId)}`, { headers })
+        ).json();
+        await fetch(session.origin + '/api/state', { headers });
+        polls += 1;
+      } while (job.status === 'running' && Date.now() < deadline);
+      assert.equal(job.status, 'complete');
+      assert.ok(polls > 5, `опросов во время preview: ${polls}`);
+      assert.equal(leasesDuringJob, 0, `сервер брал project lease во время preview: ${leasesDuringJob}`);
+    } finally {
+      await new Promise((resolve) => session.server.close(resolve));
+      await session.waitForActiveImports();
+    }
+  },
+);
+
+test(
+  'status polls of a running preview never take the project lease its publication needs',
+  { timeout: 20000 },
+  async (t) => {
+    const { startReviewServer } = require('../scripts/review/server');
+    const { spawn } = require('node:child_process');
+    const f = fixture(t);
+    fs.writeFileSync(path.join(f.workspace.dir, 'transcript/words.json'), '[]');
+    const stopFile = path.join(path.dirname(f.workspace.dir), 'stop-publisher');
+    // Как публикация настоящего preview.js: берёт и отпускает project lease, пока браузер
+    // опрашивает задание. Конфликт с опросом сервера = preview сорван «stale snapshot».
+    // Файл-сигнал и предел по времени гарантируют, что процесс не крутится после сбоя теста.
+    const publisher = `
+      const fs = require('node:fs');
+      const { acquireProjectMutationLease } = require(${JSON.stringify(path.join(__dirname, '..', 'scripts', 'project', 'workspace.js'))});
+      const dir = ${JSON.stringify(f.workspace.dir)};
+      const stopFile = ${JSON.stringify(stopFile)};
+      console.log('ready');
+      const end = Date.now() + 3000;
+      let conflicts = 0;
+      const pause = new Int32Array(new SharedArrayBuffer(4));
+      while (Date.now() < end && !fs.existsSync(stopFile)) {
+        try { acquireProjectMutationLease(dir).release(); }
+        catch (error) { if (error.code !== 'PROJECT_MANIFEST_CONFLICT') throw error; conflicts += 1; }
+        // Промежуток без lease: в него успевает войти опрос сервера, если он берёт lease.
+        Atomics.wait(pause, 0, 0, 2);
+      }
+      process.exit(conflicts ? 3 : 0);
+    `;
+    let ready;
+    const started = new Promise((resolve) => {
+      ready = resolve;
+    });
+    const session = await startReviewServer({
+      projectDir: f.workspace.dir,
+      editable: true,
+      open: false,
+      runToolImpl: () => ({ status: 1 }),
+      previewSpawnImpl(command, args, options) {
+        const child = spawn(process.execPath, ['-e', publisher], options);
+        child.stdout.once('data', ready);
+        return child;
+      },
+    });
+    try {
+      const headers = {
+        Authorization: `Bearer ${session.token}`,
+        Origin: session.origin,
+        'Content-Type': 'application/json',
+      };
+      const state = await (
+        await fetch(session.origin + '/api/state', { headers })
+      ).json();
+      const response = await fetch(session.origin + '/api/broll/preview', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          baseRevision: state.session.baseRevision,
+          baseHash: state.session.baseHash,
+          manifestHash: state.session.manifestHash,
+          kind: 'full',
+        }),
+      });
+      assert.equal(response.status, 202);
+      const { jobId } = await response.json();
+      await started;
+      const deadline = Date.now() + 10000;
+      let job;
+      let polls = 0;
+      do {
+        const poll = await fetch(
+          `${session.origin}/api/broll/preview-job?id=${encodeURIComponent(jobId)}`,
+          { headers },
+        );
+        job = { http: poll.status, ...(await poll.json()) };
+        polls += 1;
+        assert.equal(job.http, 200, `опрос задания вернул HTTP ${job.http}: ${job.error}`);
+      } while (job.status === 'running' && Date.now() < deadline);
+      assert.ok(polls > 5, `опросов во время публикации: ${polls}`);
+      assert.equal(job.status, 'complete', `опрос задания сорвал публикацию: ${job.error}`);
+    } finally {
+      fs.writeFileSync(stopFile, 'stop');
+      await new Promise((resolve) => session.server.close(resolve));
+      await session.waitForActiveImports();
+    }
+  },
+);
+
 test('final all-file barrier rejects a prior preview modified during the later source hash', (t) => {
   const f = fixture(t); const p = f.preview();
   const descriptors = new Map(); let sourceReads = 0; let mutated = false;
@@ -577,4 +796,66 @@ test('final all-file barrier rejects a prior preview modified during the later s
   }});
   assert.throws(() => approveBrief(f.workspace, f.draft.jsonPath, {confirmPreviewViewed:true,fileSystem}), /preview/i);
   assert.equal(mutated,true);assert.equal(readProjectManifest(f.workspace.dir).briefs.length,1);
+});
+
+for (const [width,height,previewWidth,previewHeight] of [[2048,1080,1920,1012],[1080,2048,1012,1920]]) {
+  test(`approval accepts actual even DCI preview ${width}x${height}`, (t) => {
+    const f=fixture(t,{width,height,previewWidth,previewHeight});
+    f.preview();
+    assert.doesNotThrow(() => approveBrief(f.workspace,f.draft.jsonPath,{confirmPreviewViewed:true}));
+  });
+}
+
+// Ролики, начатые до рабочего 1080p, хранят preview в половину композиции: их утверждение не требует пересборки.
+test('approval still accepts a legacy half-size preview of an unchanged draft', (t) => {
+  const f=fixture(t,{width:1080,height:1920,previewWidth:540,previewHeight:960});
+  f.preview();
+  assert.doesNotThrow(() => approveBrief(f.workspace,f.draft.jsonPath,{confirmPreviewViewed:true}));
+});
+
+test('approval rejects a preview that is neither the current nor the legacy size', (t) => {
+  const f=fixture(t,{width:1080,height:1920,previewWidth:720,previewHeight:1280});
+  f.preview();
+  assert.throws(() => approveBrief(f.workspace,f.draft.jsonPath,{confirmPreviewViewed:true}), /preview/i);
+});
+
+test('Review approval hands the approved brief to the same preview-to-final promotion as the pult (#110)', async (t) => {
+  const { makeReviewProject } = require('./helpers/review-project');
+  const { startReviewServer } = require('../scripts/review/server');
+  const f = makeReviewProject(t);
+  const workspace = { ...f.workspace, manifest: readProjectManifest(f.projectDir) };
+  const planned = planPreview(workspace, {
+    briefPath: f.briefPath, briefSha256: createHash('sha256').update(fs.readFileSync(f.briefPath)).digest('hex'),
+    range: { kind: 'full', fromSec: 0, toSec: 4, fromFrame: 0, toFrameExclusive: 100 },
+  });
+  const staged = path.join(f.projectDir, 'previews', '.staged.mp4');
+  fs.writeFileSync(staged, 'clean-review-preview');
+  publishCurrentPreview(workspace, planned, staged, {
+    width: 1920, height: 1080, fps: 25, generatedAt: '2026-10-18T10:05:00.000Z', quality: 'final',
+  });
+  fs.unlinkSync(staged);
+  const finalized = [];
+  const session = await startReviewServer({
+    projectDir: f.projectDir, editable: true, open: false, runToolImpl: () => ({ status: 1 }),
+    finalizeApprovalImpl: (ws, approvedPath, options) => {
+      finalized.push(path.relative(f.projectDir, approvedPath));
+      return require('../scripts/project/approve-final').finalizeApproval(ws, approvedPath, { ...options, startQa: () => ({ status: 'queued' }) });
+    },
+  });
+  t.after(() => new Promise((resolve) => session.server.close(resolve)));
+  const state = await (await fetch(`${session.origin}/api/state`, { headers: { Authorization: `Bearer ${session.token}` } })).json();
+  const response = await fetch(`${session.origin}/api/broll/approve`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session.token}`, Origin: session.origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      baseRevision: state.session.baseRevision, baseHash: state.session.baseHash,
+      manifestHash: state.session.manifestHash, confirmPreviewViewed: true,
+    }),
+  });
+  assert.equal(state.finalFromPreview, false);
+  assert.equal(response.status, 201);
+  assert.deepEqual(finalized, [path.join('brief', 'v01-approved.lesson.json')]);
+  // Review показывает «Финал готов» вместо «Финальный рендер запускается отдельно».
+  assert.equal((await response.json()).state.finalFromPreview, true);
+  assert.equal(readProjectManifest(f.projectDir).renders.at(-1).source, 'preview');
 });

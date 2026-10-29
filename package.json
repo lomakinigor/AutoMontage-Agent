@@ -1,6 +1,6 @@
 {
   "name": "automontage-agent",
-  "version": "1.6.0",
+  "version": "1.26.0",
   "description": "Движок автомонтажа видео для ИИ-агента (Claude Code/Codex). Кросс-платформенный: Windows/macOS/Linux.",
   "license": "MIT",
   "repository": {
@@ -24,25 +24,28 @@
     "montage": "node scripts/build.js",
     "preview": "node scripts/preview.js",
     "qa:preview": "node scripts/qa-preview.js",
-    "test:video-edit": "node --test tests/lesson-preview.test.js tests/source-edit.test.js tests/qa-preview.test.js",
+    "test:video-edit": "node --require ./tests/helpers/heavy-queue-isolation.cjs --test tests/lesson-preview.test.js tests/source-edit.test.js tests/qa-preview.test.js tests/takes-edit.test.js tests/take-pauses.test.js tests/takes-master.test.js tests/project-takes.test.js tests/takes-pack.test.js tests/rough-cut.test.js tests/rough-cut-media.test.js",
     "review": "node scripts/review/cli.js",
     "check:privacy": "node scripts/check-public-privacy.js --tracked",
     "check:release": "node scripts/check-release.js",
     "smoke:release": "node scripts/smoke-release.js",
-    "test": "node --test tests/*.test.js",
-    "test:review-ui": "playwright test tests/review-ui.spec.js tests/broll-review-ui.spec.js --project=chromium"
+    "test": "node --require ./tests/helpers/heavy-queue-isolation.cjs --test tests/*.test.js",
+    "test:review-ui": "playwright test tests/review-ui.spec.js tests/broll-review-ui.spec.js tests/pult-ui.spec.js tests/pult-lead-magnet-ui.spec.js --project=chromium"
   },
   "dependencies": {
     "@material/material-color-utilities": "^0.4.0",
-    "@remotion/cli": "^4.0.504",
-    "@remotion/fonts": "^4.0.504",
-    "@remotion/layout-utils": "^4.0.504",
-    "@remotion/transitions": "^4.0.504",
+    "@remotion/bundler": "4.0.536",
+    "@remotion/cli": "4.0.536",
+    "@remotion/fonts": "4.0.536",
+    "@remotion/layout-utils": "4.0.536",
+    "@remotion/paths": "4.0.536",
+    "@remotion/renderer": "4.0.536",
+    "@remotion/transitions": "4.0.536",
     "ajv": "^8.20.0",
-    "node-vibrant": "^4.0.4",
+    "esbuild": "0.28.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "remotion": "^4.0.504"
+    "remotion": "4.0.536"
   },
   "devDependencies": {
     "playwright": "^1.62.1"

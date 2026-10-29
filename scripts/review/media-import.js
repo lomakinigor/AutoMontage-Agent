@@ -15,7 +15,9 @@ const {
 } = require('./imported-assets');
 const { acquireProjectMutationLease } = require('../project/workspace');
 const { claimAndRemoveOwnedPath } = require('../project/owned-removal');
-const { IMAGE_MAX_BYTES, VIDEO_MAX_BYTES } = require('./media-limits');
+const {
+  IMAGE_MAX_BYTES, LAYER_IMPORT_LIMITS, VIDEO_MAX_BYTES, VIDEO_MAX_SECONDS,
+} = require('./media-limits');
 const {
   fileSystemCapabilities,
   fsyncDirectoryIfSupported,
@@ -31,6 +33,16 @@ const IMPORT_OVERHEAD_BYTES = 4n * 1024n * 1024n;
 const MAX_IMAGE_OUTPUT_BYTES = 128n * 1024n * 1024n;
 const MAX_MASTER_OUTPUT_BYTES = 2n * 1024n * 1024n * 1024n;
 const MAX_PROXY_OUTPUT_BYTES = 512n * 1024n * 1024n;
+const REVIEW_IMPORT_LIMITS = Object.freeze({
+  videoMaxBytes: VIDEO_MAX_BYTES,
+  videoMaxSeconds: VIDEO_MAX_SECONDS,
+});
+const PROCESS_TIMEOUT_MS = 2 * 60 * 60_000;
+const MAX_PROCESS_TIMEOUT_MS = 8 * 60 * 60_000;
+// Тайм-аут кодирования и проверки декодированием: 2 часа, а для длинного видео – до 4 секунд работы на
+// секунду ролика (webm-прокси и libx264 длинного 1080p50 на медленной машине), не больше 8 часов.
+// Для видео Review (до 30 минут) это всегда прежние 2 часа.
+const PROCESS_SECONDS_PER_MEDIA_SECOND = 4;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CONTROL = /\p{Cc}/u;
 const OWNER_PURPOSE = 'review-media-import-owner';
@@ -67,7 +79,35 @@ function singleHeader(headers, name, code) {
   return matches[0][1];
 }
 
-function parseImportHeaders(headers) {
+// Опция limits у importReviewMedia: только видео, только положительные конечные числа и не выше
+// LAYER_IMPORT_LIMITS. Без опции – лимиты обычного HTTP-импорта Review.
+function normalizeImportLimits(limits) {
+  if (limits === undefined || limits === null) return REVIEW_IMPORT_LIMITS;
+  const keys = limits && typeof limits === 'object' && !Array.isArray(limits)
+    ? Object.keys(limits).sort().join(',') : null;
+  if (keys !== 'videoMaxBytes,videoMaxSeconds') {
+    throw new Error('limits: нужен объект { videoMaxBytes, videoMaxSeconds }');
+  }
+  const { videoMaxBytes, videoMaxSeconds } = limits;
+  if (!Number.isSafeInteger(videoMaxBytes) || videoMaxBytes <= 0
+    || videoMaxBytes > LAYER_IMPORT_LIMITS.videoMaxBytes) {
+    throw new Error(`limits.videoMaxBytes: целое число байт от 1 до ${LAYER_IMPORT_LIMITS.videoMaxBytes}`);
+  }
+  if (typeof videoMaxSeconds !== 'number' || !Number.isFinite(videoMaxSeconds) || videoMaxSeconds <= 0
+    || videoMaxSeconds > LAYER_IMPORT_LIMITS.videoMaxSeconds) {
+    throw new Error(`limits.videoMaxSeconds: число секунд больше 0 и не больше ${LAYER_IMPORT_LIMITS.videoMaxSeconds}`);
+  }
+  return Object.freeze({ videoMaxBytes, videoMaxSeconds });
+}
+
+function processTimeoutMs(durationSec) {
+  const scaled = Number.isFinite(durationSec) && durationSec > 0
+    ? Math.ceil(durationSec * PROCESS_SECONDS_PER_MEDIA_SECOND) * 1000
+    : 0;
+  return Math.min(MAX_PROCESS_TIMEOUT_MS, Math.max(PROCESS_TIMEOUT_MS, scaled));
+}
+
+function parseImportHeaders(headers, limits = REVIEW_IMPORT_LIMITS) {
   const lengthText = singleHeader(headers, 'content-length', 'MEDIA_IMPORT_LENGTH_INVALID');
   if (!/^[1-9][0-9]*$/.test(lengthText)) {
     throw mediaImportError(400, 'MEDIA_IMPORT_LENGTH_INVALID');
@@ -117,7 +157,7 @@ function parseImportHeaders(headers) {
 
   const mediaKind = imageType ? 'image' : 'video';
   const contentLength = Number(lengthBigInt);
-  const limit = mediaKind === 'image' ? IMAGE_MAX_BYTES : VIDEO_MAX_BYTES;
+  const limit = mediaKind === 'image' ? IMAGE_MAX_BYTES : limits.videoMaxBytes;
   if (contentLength > limit) throw mediaImportError(413, 'MEDIA_IMPORT_TOO_LARGE');
   return { contentLength, contentType, extension, filename, mediaKind };
 }
@@ -167,10 +207,16 @@ function deriveOutputBudgets({
   const frames = BigInt(frameCountNumber);
   const durationMillis = BigInt(Math.ceil(durationSec * 1000));
   const audioBytes = hasAudio ? (durationMillis * 32_000n + 999n) / 1000n : 0n;
+  // Потолки растут только за пределами лимитов Review (видео больше 1 ГиБ или длиннее 30 минут – это
+  // проверенный слой урока): мастер – до двух размеров входа, прокси – 512 МиБ на каждые 30 минут.
+  // Для видео в лимитах Review потолки прежние: 2 ГиБ и 512 МиБ.
+  const masterCap = 2n * input > MAX_MASTER_OUTPUT_BYTES ? 2n * input : MAX_MASTER_OUTPUT_BYTES;
+  const proxyCapScaled = (MAX_PROXY_OUTPUT_BYTES * durationMillis + 1_799_999n) / 1_800_000n;
+  const proxyCap = proxyCapScaled > MAX_PROXY_OUTPUT_BYTES ? proxyCapScaled : MAX_PROXY_OUTPUT_BYTES;
   const master = clampBudget(
     (2n * input) + ((pixels * frames + 15n) / 16n) + audioBytes + IMPORT_OVERHEAD_BYTES,
     8n * 1024n * 1024n,
-    MAX_MASTER_OUTPUT_BYTES,
+    masterCap,
   );
   const scale = Math.min(1, 1280 / Math.max(width, height));
   const proxyWidth = BigInt(Math.max(2, Math.ceil(width * scale / 2) * 2));
@@ -181,7 +227,7 @@ function deriveOutputBudgets({
       + (hasAudio ? (durationMillis * 16_000n + 999n) / 1000n : 0n)
       + IMPORT_OVERHEAD_BYTES,
     4n * 1024n * 1024n,
-    MAX_PROXY_OUTPUT_BYTES,
+    proxyCap,
   );
   return { image: 0n, master, proxy };
 }
@@ -852,7 +898,7 @@ function sourceMatchesExtension(source, extension) {
     && (containers.has('mov') || containers.has('mp4'));
 }
 
-function assertMediaLimits(source, headers) {
+function assertMediaLimits(source, headers, limits = REVIEW_IMPORT_LIMITS) {
   const expectedKind = headers.mediaKind;
   if (source.mediaKind !== expectedKind || !sourceMatchesExtension(source, headers.extension)) {
     throw mediaImportError(422, 'MEDIA_IMPORT_CONTENT_MISMATCH');
@@ -863,7 +909,7 @@ function assertMediaLimits(source, headers) {
     || source.width * source.height > maxPixels) {
     throw mediaImportError(422, 'MEDIA_IMPORT_GEOMETRY_UNSUPPORTED');
   }
-  if (expectedKind === 'video' && source.durationSec > 1_800) {
+  if (expectedKind === 'video' && source.durationSec > limits.videoMaxSeconds) {
     throw mediaImportError(422, 'MEDIA_IMPORT_DURATION_UNSUPPORTED');
   }
 }
@@ -886,7 +932,7 @@ function imageInvocation(owned, signal, quota) {
   };
 }
 
-function videoMasterInvocation(owned, source, outputFps, signal, quota) {
+function videoMasterInvocation(owned, source, outputFps, signal, quota, timeoutMs = PROCESS_TIMEOUT_MS) {
   const args = [
     '-hide_banner', '-loglevel', 'error', '-i', owned.uploadPath,
     '-map', '0:v:0',
@@ -909,13 +955,47 @@ function videoMasterInvocation(owned, source, outputFps, signal, quota) {
   );
   return {
     command: 'ffmpeg', args, cwd: owned.quarantinePath, signal,
-    timeoutMs: 2 * 60 * 60_000,
+    timeoutMs,
     maxStdoutBytes: 1024 * 1024,
     maxStderrBytes: 4 * 1024 * 1024,
   };
 }
 
-function videoProxyInvocation(owned, source, outputFps, signal, quota) {
+function remuxConformity(source, outputFps) {
+  if (source.videoCodec !== 'h264') return { ok: false, reason: 'видеокодек должен быть h264' };
+  if (source.pixelFormat !== 'yuv420p') return { ok: false, reason: 'формат пикселей должен быть yuv420p' };
+  if (source.rotation !== 0) return { ok: false, reason: 'видео содержит поворот' };
+  if (source.width % 2 !== 0 || source.height % 2 !== 0) return { ok: false, reason: 'ширина и высота должны быть чётными' };
+  if (!Number.isFinite(source.fps) || !(Math.abs(source.fps - outputFps) <= 1e-6)) {
+    return { ok: false, reason: 'частота кадров не совпадает с исходником' };
+  }
+  if (source.hasAudio) {
+    if (source.audioCodec !== 'aac') return { ok: false, reason: 'аудиокодек должен быть AAC' };
+    if (source.audioSampleRate !== 48000) return { ok: false, reason: 'частота звука должна быть 48 кГц' };
+    if (source.audioChannels !== 2) return { ok: false, reason: 'звук должен быть стерео' };
+  }
+  return { ok: true, reason: null };
+}
+
+function videoRemuxInvocation(owned, source, signal, quota, timeoutMs = PROCESS_TIMEOUT_MS) {
+  const args = [
+    '-hide_banner', '-loglevel', 'error', '-i', owned.uploadPath,
+    '-map', '0:v:0',
+  ];
+  if (source.hasAudio) args.push('-map', '0:a:0');
+  args.push('-map_metadata', '-1', '-c', 'copy', '-t', String(source.durationSec),
+    '-movflags', '+faststart', '-fs', String(quota), '-y', owned.canonicalPath);
+  return {
+    command: 'ffmpeg', args, cwd: owned.quarantinePath, signal,
+    timeoutMs,
+    maxStdoutBytes: 1024 * 1024,
+    maxStderrBytes: 4 * 1024 * 1024,
+  };
+}
+
+function videoProxyInvocation(owned, source, outputFps, signal, quota, {
+  fast = false, timeoutMs = PROCESS_TIMEOUT_MS,
+} = {}) {
   const proxyFps = Math.min(30, outputFps);
   const args = [
     '-hide_banner', '-loglevel', 'error', '-i', owned.canonicalPath,
@@ -925,7 +1005,8 @@ function videoProxyInvocation(owned, source, outputFps, signal, quota) {
   args.push(
     '-map_metadata', '-1',
     '-vf', `scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,fps=${proxyFps},pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0`,
-    '-c:v', 'libvpx', '-crf', '32', '-b:v', '0',
+    '-c:v', 'libvpx', '-threads', fast ? '4' : '1',
+    ...(fast ? ['-cpu-used', '4'] : []), '-crf', '32', '-b:v', '0',
   );
   if (source.hasAudio) {
     args.push('-c:a', 'libopus', '-ar', '48000', '-ac', '2', '-b:a', '96k');
@@ -935,26 +1016,26 @@ function videoProxyInvocation(owned, source, outputFps, signal, quota) {
   args.push('-t', String(source.durationSec), '-fs', String(quota), '-y', owned.normalizedPreviewPath);
   return {
     command: 'ffmpeg', args, cwd: owned.quarantinePath, signal,
-    timeoutMs: 2 * 60 * 60_000,
+    timeoutMs,
     maxStdoutBytes: 1024 * 1024,
     maxStderrBytes: 4 * 1024 * 1024,
   };
 }
 
-function decodeInvocation(inputPath, signal) {
+function decodeInvocation(inputPath, signal, timeoutMs = PROCESS_TIMEOUT_MS) {
   return {
     command: 'ffmpeg',
     args: ['-hide_banner', '-loglevel', 'error', '-i', inputPath, '-f', 'null', '-'],
     cwd: path.dirname(inputPath),
     signal,
-    timeoutMs: 2 * 60 * 60_000,
+    timeoutMs,
     maxStdoutBytes: 1024 * 1024,
     maxStderrBytes: 4 * 1024 * 1024,
   };
 }
 
 async function normalizeIntoQuarantine({
-  source, outputFps, owned, signal, fileSystem, run, budgets, checkDisk,
+  source, outputFps, owned, signal, fileSystem, run, budgets, checkDisk, masterStrategy, log,
 }) {
   if (source.mediaKind === 'video'
     && (!Number.isFinite(outputFps) || outputFps <= 0 || outputFps > 120)) {
@@ -973,7 +1054,14 @@ async function normalizeIntoQuarantine({
     appendOwnerRecord(owned, fileSystem);
   } else {
     checkDisk('master');
-    await run(videoMasterInvocation(owned, source, outputFps, signal, budgets.master));
+    const conformity = masterStrategy === 'remux-if-conforming' ? remuxConformity(source, outputFps) : null;
+    if (conformity) {
+      log(conformity.ok ? 'мастер: переупаковка без перекодирования' : `мастер: перекодирование – ${conformity.reason}`);
+    }
+    const timeoutMs = processTimeoutMs(source.durationSec);
+    await run(conformity?.ok
+      ? videoRemuxInvocation(owned, source, signal, budgets.master, timeoutMs)
+      : videoMasterInvocation(owned, source, outputFps, signal, budgets.master, timeoutMs));
     assertOwnedImport(fileSystem, owned);
     owned.canonicalIdentity = captureOwnedFile(fileSystem, owned.canonicalPath, {
       chmod: true,
@@ -983,7 +1071,9 @@ async function normalizeIntoQuarantine({
     appendOwnerRecord(owned, fileSystem);
     assertOutputIdentities(fileSystem, owned);
     checkDisk('proxy');
-    await run(videoProxyInvocation(owned, source, outputFps, signal, budgets.proxy));
+    await run(videoProxyInvocation(owned, source, outputFps, signal, budgets.proxy, {
+      fast: masterStrategy !== 'encode', timeoutMs,
+    }));
     assertOwnedFile(fileSystem, owned.canonicalPath, owned.canonicalIdentity);
     owned.previewIdentity = captureOwnedFile(
       fileSystem,
@@ -1020,7 +1110,8 @@ async function verifyNormalizedOutputs({ source, outputFps, owned, signal, fileS
     throw mediaImportError(422, 'MEDIA_IMPORT_OUTPUT_INVALID');
   }
   assertOutputIdentities(fileSystem, owned);
-  await run(decodeInvocation(owned.canonicalPath, signal));
+  const timeoutMs = processTimeoutMs(source.mediaKind === 'video' ? source.durationSec : 0);
+  await run(decodeInvocation(owned.canonicalPath, signal, timeoutMs));
   assertOutputIdentities(fileSystem, owned);
   if (source.mediaKind === 'video') {
     const expectedMasterAudio = !source.hasAudio || (
@@ -1067,7 +1158,7 @@ async function verifyNormalizedOutputs({ source, outputFps, owned, signal, fileS
       throw mediaImportError(422, 'MEDIA_IMPORT_OUTPUT_INVALID');
     }
     assertOutputIdentities(fileSystem, owned);
-    await run(decodeInvocation(owned.normalizedPreviewPath, signal));
+    await run(decodeInvocation(owned.normalizedPreviewPath, signal, timeoutMs));
     assertOutputIdentities(fileSystem, owned);
   }
   assertOwnedImport(fileSystem, owned);
@@ -1778,13 +1869,20 @@ async function importReviewMedia({
   platform = process.platform,
   provenance = null,
   scanEmbeddedTextImpl = scanEmbeddedText,
+  masterStrategy = 'encode',
+  limits = null,
+  log = console.log,
 }) {
+  if (!['encode', 'remux-if-conforming'].includes(masterStrategy)) {
+    throw new Error('masterStrategy: допустимы encode и remux-if-conforming');
+  }
+  const importLimits = normalizeImportLimits(limits);
   if (!controller?.acquire()) throw mediaImportError(409, 'MEDIA_IMPORT_BUSY');
   let owned;
   let mutationLease;
   let workError = null;
   try {
-    const parsedHeaders = parseImportHeaders(headers);
+    const parsedHeaders = parseImportHeaders(headers, importLimits);
     const discoveryProvenance = provenance === null ? null : validateProvenance(provenance);
     assertDiskSpace(projectDir, statfsImpl, requiredFreeBytes(parsedHeaders.contentLength));
     try {
@@ -1812,7 +1910,7 @@ async function importReviewMedia({
       if (error.status || error.code === 'MEDIA_PROCESS_ABORTED') throw error;
       throw mediaImportError(422, 'MEDIA_IMPORT_DECODE_FAILED', 'media decode failed', { cause: error });
     }
-    assertMediaLimits(source, parsedHeaders);
+    assertMediaLimits(source, parsedHeaders, importLimits);
     const budgets = deriveOutputBudgets({
       mediaKind: source.mediaKind,
       inputBytes: parsedHeaders.contentLength,
@@ -1831,7 +1929,7 @@ async function importReviewMedia({
     try {
       await normalizeIntoQuarantine({
         source, outputFps, owned, signal, fileSystem, run: runMediaProcessImpl,
-        budgets, checkDisk,
+        budgets, checkDisk, masterStrategy, log,
       });
       const master = await verifyNormalizedOutputs({
         source, outputFps, owned, signal, fileSystem, run: runMediaProcessImpl,
@@ -1918,15 +2016,20 @@ async function importReviewMedia({
 module.exports = {
   DISK_RESERVE_BYTES,
   IMAGE_MAX_BYTES,
+  LAYER_IMPORT_LIMITS,
   MAX_IMAGE_OUTPUT_BYTES,
   MAX_MASTER_OUTPUT_BYTES,
   MAX_PROXY_OUTPUT_BYTES,
   VIDEO_MAX_BYTES,
+  VIDEO_MAX_SECONDS,
   createImportController,
   cleanupOrphanImportQuarantines,
   deriveOutputBudgets,
   importReviewMedia,
   mediaImportError,
+  normalizeImportLimits,
   parseImportHeaders,
+  processTimeoutMs,
   requiredFreeBytes,
+  remuxConformity,
 };

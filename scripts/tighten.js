@@ -11,6 +11,11 @@ const { runTrim } = require('./trim-media');
 
 const FILLER = /^(э+|эм+|ээ+|мм+|ну|типа|короче|значит|как-то|вот|это самое|как бы|в общем|собственно)[.,!?]*$/i;
 
+// Слово-паразит по тому же правилу, что и в нарезке: используется и гейтами проверки финала.
+function isFillerWord(word) {
+  return FILLER.test(String(word ?? ''));
+}
+
 function parseTightenOptions(args) {
   return {
     maxGap: finiteNumber(optionValue(args, 'maxGap', '0.6'), '--maxGap', { min: 0.001, max: 60 }),
@@ -145,6 +150,8 @@ if (require.main === module) {
 module.exports = {
   buildCuts,
   collectWords,
+  FILLER,
+  isFillerWord,
   main,
   parseTightenOptions,
 };

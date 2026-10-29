@@ -3,29 +3,79 @@
 // Движок сам находит свой корень (__dirname), результат кладёт в папку пользователя.
 //
 //   automontage <видео> [опции build.js]   – смонтировать ролик
+//   automontage motion <audio> --project <name> – создать motion-черновик
 //   automontage demo                        – собрать демо из примера в репозитории
 //   automontage --help                      – помощь
 const path = require('path');
 const fs = require('fs');
 const { execFileSync, spawn } = require('child_process');
-const { buildDemoArgs, ensureOutputDestination } = require('./project/cli-options');
+const { buildDemoArgs, buildMotionDemoArgs, ensureOutputDestination } = require('./project/cli-options');
 const { configureMediaToolPath } = require('./env');
 
 const ROOT = path.join(__dirname, '..');
-const argv = process.argv.slice(2);
 
 function help() {
   console.log(`AutoMontage-Agent – автомонтаж видео.
 
 Использование:
   automontage <видео.mp4> [опции]     смонтировать (результат в текущей папке)
+  automontage motion <audio> --project <name>  создать motion-черновик
+  automontage motion <audio> --project <name> --aspect horizontal
+                                      горизонтальный ролик 16:9 (1920x1080); по умолчанию vertical 1080x1920
+  automontage motion <audio> --project <name> --music-only
+                                      motion без речи: аудио – готовый саундтрек, без Whisper
+  automontage motion --help          motion из аудио или явная платная ElevenLabs-озвучка
+  automontage motion --project-dir . --brief brief/v01-approved.motion.json
+                                      собрать утверждённый MotionReel
   automontage demo                    собрать демо-ролик из примера (без ключей и whisper)
+  automontage demo --motion           создать motion-reel draft с тестовыми тонами (без речи/API)
+                                      [--project-dir <новая-папка>], затем preview и утверждение
   automontage doctor                  проверить окружение (что доустановить)
   automontage review --project-dir .  открыть локальную проверку монтажного листа
+  automontage pult                    открыть «Пульт роликов» со всеми роликами
+  automontage pult --install-shortcut создать значок пульта (macOS/Windows)
+  automontage inbox                   правки и утверждения из пульта для агента
+                                      (--help: --accept, --ack-final-qa, --decline-final, --restore-final)
+  automontage queue                   состояние очереди тяжёлых задач
+  automontage lead-magnet --help      лид-магниты: обещание, сборка, проверка (для агента)
   automontage preview --project-dir . --brief brief/v01-draft.lesson.json
-                                      собрать настоящий Remotion-предпросмотр draft
-  automontage master --project-dir . --edit edit/v02-source.json
+                                      собрать настоящий предпросмотр draft; полный 1080p –
+                                      в качестве финала: «Утверждаю» сразу даёт финал копией
+  automontage takes add --project-dir . --file take2.mp4 [--file take3.mp4]
+                                      добавить дубли одного ролика и локально расшифровать каждый
+  automontage takes pack --project-dir .
+                                      сводка фраз всех дублей для выбора лучших кусков
+  automontage layer new --project-dir <p>
+                                      motion-слой из деталей motion-kit
+  automontage layer check --project-dir <p> --layer motion-v01
+                                      гейты ритма, safe-zone, звуков по плану
+  automontage layer render --project-dir <p> --layer motion-v01
+                                      рендер слоя, когда машина свободна, + гейты
+  automontage layer import --project-dir <p> --file <mp4>
+                                      импорт проверенного слоя
+  automontage layer brief --project-dir <p> --asset <ref> …
+                                      draft brief со слоем на весь ролик
+  automontage layer --help            все команды layer (new/words/check/render/import/brief/stock/sheet)
+  automontage roughcut --project-dir <p> --edit edit/roughcut-v01.json
+                                      черновая нарезка без графики для пульта (до master и слоя)
+  automontage roughcut confirm --project-dir <p>
+                                      нарезка готова – только по явным словам автора в чате
+  automontage master --project-dir . --edit edit/v02-source.json [--quality 1080p|source]
+    1080p по умолчанию; source (4k/native) сохраняет родной размер
                                       собрать новую source-ревизию без повторного Whisper
+  automontage master --project-dir . --edit edit/v02-takes.json
+                                      собрать ролик из лучших кусков разных дублей
+  automontage clean [--level renders|archive] [--yes]
+                                      отчёт, что можно удалить у готовых роликов; --yes удаляет
+  automontage clean --project <папка> [--level archive] [--yes]
+                                      то же для одного ролика сразу после финала (пауза 0 дней)
+  automontage critic --project-dir <папка> --report <файл.json>
+                                      проверить отчёт критика, сохранить qa/critic-NN.json|txt
+                                      и показать решение: исправлять три худшие сцены или остановиться
+  automontage qa-final <папка> [--final <mp4>] [--model <имя>] [--music]
+                                      повторно расшифровать финал: паразиты, дубли, пропавшие слова,
+                                      паузы, вздохи – отчёт qa/final-*.txt (сборка делает это сама,
+                                      финал из preview проверяется в фоне)
   automontage --help                  эта справка
 
 Частые опции:
@@ -50,6 +100,7 @@ function help() {
   --autopos             плашки автоматически мимо лица
   --reframe             перекадрировать Dynamic в вертикаль по лицу
   --outdir <путь>       куда положить результат (по умолчанию текущая папка)
+  --no-final-qa         не расшифровывать готовый финал повторно (отчёт qa/final-*.txt)
 
 Внешние темы подключаются по id через каталог THEMES_EXT.
 
@@ -57,103 +108,239 @@ function help() {
 Требуется: Node.js (>=20), Python 3, ffmpeg (libwebp нужен для загрузки фото в Review).`);
 }
 
-if (!argv.length || argv[0] === '--help' || argv[0] === '-h') { help(); process.exit(0); }
+// Команды с собственной уборкой по сигналу: сигнал внешнему automontage передаётся ребёнку, внешний
+// процесс ждёт его выхода и отдаёт его код (в том числе 2 у layer check/render). execFileSync так не
+// умеет: убитый внешний процесс оставлял ребёнка доделывать работу (layer new дособирал слой).
+// review – локальная проверка проекта; layer – motion-слой из деталей motion-kit и его проверки.
+// Аргументы обеих не попадают в build.js.
+// SIGHUP – закрытое окно терминала: без него осиротевший review-сервер и недостроенный layer new
+// остаются висеть. layer new и review/cli.js убирают за собой на SIGHUP так же, как на SIGTERM.
+const SIGNAL_FORWARDING = {
+  review: { script: ['review', 'cli.js'], signalExitCodes: { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } },
+  layer: { script: ['layer', 'cli.js'], signalExitCodes: { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } },
+};
 
-try {
-  configureMediaToolPath();
-} catch (error) {
-  console.error(`❌ ${error.message}`);
-  process.exit(1);
-}
-
-// проверка окружения: automontage doctor
-if (argv[0] === 'doctor') {
-  try { execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'doctor.js')], { stdio: 'inherit', cwd: ROOT }); }
-  catch (e) { process.exit(e.status || 1); }
-  process.exit(0);
-}
-
-// настоящий draft-preview: отдельная команда не попадает в approved final build.js
-if (argv[0] === 'preview') {
-  try {
-    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'preview.js'), ...argv.slice(1)], {
-      stdio: 'inherit', cwd: process.cwd(), shell: false,
-    });
-  } catch (e) { process.exit(e.status || 1); }
-  process.exit(0);
-}
-
-// версионированный монтаж исходника: cut-list остаётся данными проекта
-if (argv[0] === 'master') {
-  try {
-    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'project', 'build-master.js'), ...argv.slice(1)], {
-      stdio: 'inherit', cwd: process.cwd(), shell: false,
-    });
-  } catch (e) { process.exit(e.status || 1); }
-  process.exit(0);
-}
-
-// локальная проверка проекта: аргументы review никогда не попадают в build.js
-if (argv[0] === 'review') {
-  const child = spawn(
+function runForwardingSignals({ script, signalExitCodes }, args, {
+  platform = process.platform,
+  spawnImpl = spawn,
+  processLike = process,
+} = {}) {
+  const child = spawnImpl(
     process.execPath,
-    [path.join(ROOT, 'scripts', 'review', 'cli.js'), ...argv.slice(1)],
+    [path.join(ROOT, 'scripts', ...script), ...args],
     { stdio: 'inherit', cwd: process.cwd(), shell: false },
   );
-  const signalExitCodes = { SIGINT: 130, SIGTERM: 143 };
+  // На Windows нет настоящих POSIX-сигналов: консольное событие (Ctrl+C/Ctrl+Break) и так доходит до
+  // ребёнка напрямую через общую консольную группу. Дополнительный child.kill(signal) там – это
+  // TerminateProcess, то есть жёсткое убийство поверх уже идущей уборки ребёнка (например, layer new
+  // удаляет недостроенную папку по своему SIGINT) – снаружи только ждём его настоящий код выхода.
+  const forwardToChild = platform !== 'win32';
   let forwardedSignal = null;
   let settled = false;
   const handlers = {};
   const restore = () => {
     for (const signal of Object.keys(signalExitCodes)) {
-      process.removeListener(signal, handlers[signal]);
+      processLike.removeListener(signal, handlers[signal]);
     }
   };
   const finish = (code) => {
     if (settled) return;
     settled = true;
     restore();
-    process.exit(code);
+    processLike.exit(code);
   };
   for (const signal of Object.keys(signalExitCodes)) {
     handlers[signal] = () => {
       if (forwardedSignal) return;
       forwardedSignal = signal;
-      child.kill(signal);
+      if (!forwardToChild) return;
+      try {
+        child.kill(signal);
+      } catch {
+        // Сюда попадаем только на POSIX (forwardToChild уже false и выход выше – на Windows). Сам сигнал
+        // по какой-то причине не ушёл (например, ребёнок уже завершается) – гасим его понятным SIGTERM.
+        child.kill('SIGTERM');
+      }
     };
-    process.on(signal, handlers[signal]);
+    processLike.on(signal, handlers[signal]);
   }
   child.once('error', () => finish(1));
   child.once('exit', (code) => {
     if (Number.isInteger(code)) finish(code);
     else finish(forwardedSignal ? signalExitCodes[forwardedSignal] : 1);
   });
-} else {
+}
 
-const buildJs = path.join(ROOT, 'scripts', 'build.js');
+function main(argv = process.argv.slice(2)) {
+  if (!argv.length || argv[0] === '--help' || argv[0] === '-h') { help(); process.exit(0); }
 
-let forward;
-if (argv[0] === 'demo') {
-  // демо из коробки: лёгкое тест-видео + готовый монтажный лист, без whisper и ключей
-  forward = buildDemoArgs(ROOT, process.cwd());
-  const demoSrc = forward[0];
-  const demoList = forward[2];
-  if (!fs.existsSync(demoSrc) || !fs.existsSync(demoList)) {
-    console.error('Демо-файлы не найдены (examples/demo-source.mp4 + examples/scenario-demo.json).');
-    console.error('Смонтируй своё: automontage <видео.mp4>');
+  try {
+    configureMediaToolPath();
+  } catch (error) {
+    console.error(`❌ ${error.message}`);
     process.exit(1);
   }
-} else {
-  forward = argv.slice();
+
+  // проверка окружения: automontage doctor
+  if (argv[0] === 'doctor') {
+    try { execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'doctor.js')], { stdio: 'inherit', cwd: ROOT }); }
+    catch (e) { process.exit(e.status || 1); }
+    process.exit(0);
+  }
+
+  if (argv[0] === 'motion') {
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'motion', 'build.js'), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (error) { process.exit(error.status || 1); }
+    process.exit(0);
+  }
+
+  if (argv[0] === 'demo' && argv[1] === '--motion') {
+    try {
+      execFileSync(process.execPath, buildMotionDemoArgs(ROOT, process.cwd(), argv.slice(2)), {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (error) { if (!error.status) console.error(error.message); process.exit(error.status || 1); }
+    process.exit(0);
+  }
+
+  // настоящий draft-preview: отдельная команда не попадает в approved final build.js
+  if (argv[0] === 'preview') {
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'preview.js'), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (e) { process.exit(e.status || 1); }
+    process.exit(0);
+  }
+
+  // версионированный монтаж исходника: cut-list остаётся данными проекта
+  if (argv[0] === 'master') {
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'project', 'build-master.js'), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (e) { process.exit(e.status || 1); }
+    process.exit(0);
+  }
+
+  // черновая нарезка: лёгкая копия из активного исходника для пульта, без новой ревизии
+  if (argv[0] === 'roughcut') {
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'project', 'rough-cut-cli.js'), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (e) { process.exit(e.status || 1); }
+    process.exit(0);
+  }
+
+  // чистка готовых роликов: по умолчанию только отчёт, удаление – с --yes
+  if (argv[0] === 'clean') {
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'project', 'clean.js'), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (e) { process.exit(e.status || 1); }
+    process.exit(0);
+  }
+
+  // финальный QA: повторная расшифровка готового MP4 и отчёт qa/final-*.txt
+  if (argv[0] === 'qa-final') {
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'qa', 'final-qa.js'), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (e) { process.exit(e.status || 1); }
+    process.exit(0);
+  }
+
+  // отчёт агента-критика: проверка, qa/critic-<NN>.json|txt и решение цикла
+  if (argv[0] === 'critic') {
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'qa', 'critic.js'), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (e) { process.exit(e.status || 1); }
+    process.exit(0);
+  }
+
+  // дубли одного ролика: импорт, локальная расшифровка и сводка фраз для выбора
+  if (argv[0] === 'takes') {
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'project', 'takes-cli.js'), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (e) { process.exit(e.status || 1); }
+    process.exit(0);
+  }
+
+  // пульт роликов, входящие и лид-магниты: отдельные скрипты, аргументы не попадают в build.js
+  if (argv[0] === 'pult' || argv[0] === 'inbox' || argv[0] === 'lead-magnet') {
+    const script = {
+      pult: ['pult', 'cli.js'],
+      inbox: ['pult', 'inbox.js'],
+      'lead-magnet': ['lead-magnet', 'cli.js'],
+    }[argv[0]];
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', ...script), ...argv.slice(1)], {
+        stdio: 'inherit', cwd: process.cwd(), shell: false,
+      });
+    } catch (error) { process.exit(error.status || 1); }
+    process.exit(0);
+  }
+
+  if (argv[0] === 'queue') {
+    try {
+      const { heavyQueueConfig, listHeavySlots } = require('./heavy-queue');
+      const config = heavyQueueConfig();
+      const busy = listHeavySlots(config).filter((slot) => slot.busy);
+      console.log(`Очередь тяжёлых задач: ${busy.length ? 'занято' : 'свободно'} (слотов: ${config.slots})`);
+      for (const slot of busy) {
+        console.log(`Слот ${slot.index}: ${slot.label || 'другая тяжёлая задача'}; pid: ${slot.pid ?? 'неизвестен'}; начало: ${slot.acquiredAt || 'неизвестно'}`);
+      }
+      console.log(`Папка очереди: ${config.dir}`);
+    } catch (error) {
+      console.error(`❌ ${error.message}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
+  if (Object.hasOwn(SIGNAL_FORWARDING, argv[0])) {
+    runForwardingSignals(SIGNAL_FORWARDING[argv[0]], argv.slice(1));
+    return;
+  }
+
+  const buildJs = path.join(ROOT, 'scripts', 'build.js');
+
+  let forward;
+  if (argv[0] === 'demo') {
+    // демо из коробки: лёгкое тест-видео + готовый монтажный лист, без whisper и ключей
+    forward = buildDemoArgs(ROOT, process.cwd());
+    const demoSrc = forward[0];
+    const demoList = forward[2];
+    if (!fs.existsSync(demoSrc) || !fs.existsSync(demoList)) {
+      console.error('Демо-файлы не найдены (examples/demo-source.mp4 + examples/scenario-demo.json).');
+      console.error('Смонтируй своё: automontage <видео.mp4>');
+      process.exit(1);
+    }
+  } else {
+    forward = argv.slice();
+  }
+
+  // В project-режиме папка ролика владеет финалом. Legacy-режим копирует его пользователю.
+  forward = ensureOutputDestination(forward, process.cwd());
+
+  try {
+    // build.js резолвит видео от своего process.cwd() → запускаем с cwd пользователя
+    execFileSync(process.execPath, [buildJs, ...forward], { stdio: 'inherit', cwd: process.cwd() });
+  } catch (e) {
+    process.exit(e.status || 1);
+  }
 }
 
-// В project-режиме папка ролика владеет финалом. Legacy-режим копирует его пользователю.
-forward = ensureOutputDestination(forward, process.cwd());
+if (require.main === module) main();
 
-try {
-  // build.js резолвит видео от своего process.cwd() → запускаем с cwd пользователя
-  execFileSync(process.execPath, [buildJs, ...forward], { stdio: 'inherit', cwd: process.cwd() });
-} catch (e) {
-  process.exit(e.status || 1);
-}
-}
+module.exports = { SIGNAL_FORWARDING, help, main, runForwardingSignals };

@@ -1,0 +1,354 @@
+const fs = require('node:fs');
+const path = require('node:path');
+
+const { activeRoughCut, removedRanges } = require('../project/rough-cut-model');
+const { readProjectManifest, resolveProjectPath } = require('../project/workspace');
+const { readPultCard } = require('./card-file');
+const { countNewComments } = require('./comments');
+const { hashBytes } = require('./files');
+const { SAFE_NAME, isSafeName } = require('./names');
+const { declinedKey, declinedSet, readPultState } = require('./state');
+const { deriveVariantStatus, pluralEdits } = require('./status');
+const { finalQaState } = require('../qa/final-qa-job');
+
+// Ключ карточки – то же самое deny-list правило, что и для имён папок (см. names.js):
+// allow-list из букв/цифр отклонял реальные legacy-папки (NFD й/ё, скобки, плюс), их
+// нельзя было бы ни открыть, ни прокомментировать.
+const ENTRY_KEY = new RegExp(`^${SAFE_NAME}(?:#\\d{1,3})?$`, 'u');
+const LEGACY_STEPS = Object.freeze({
+  ready: 'Готов – можно забирать',
+  waiting: 'Посмотрите и напишите правки',
+  working: 'Агент работает',
+});
+const FOLDER_HASH_ERROR = 'Символ # в имени папки не поддерживается – переименуйте папку';
+const MANIFEST_UNREADABLE_ERROR = 'Паспорт ролика не читается';
+const FOLDER_UNREADABLE_ERROR = 'Папка ролика не читается';
+const MISSING_VIDEO_STEP = 'Видео не найдено – проверьте pult-card.json';
+const BROLL_BLOCKER = 'Выберите B-roll в проверке монтажа';
+// Реальные рендеры кладут промежуточные файлы вроде layout-revision.raw.mp4, не только
+// точное raw.mp4 – суффикс должен отсекать оба варианта, без учёта регистра.
+const RAW_RENDER_SUFFIX = /(^|\.)raw\.mp4$/i;
+// Причина выреза из списка кусков пишет агент: в карточку она попадает не длиннее этого.
+const MAX_CUT_NOTE = 500;
+
+function listFolders(projectsDir) {
+  let dirents;
+  try {
+    dirents = fs.readdirSync(projectsDir, { withFileTypes: true });
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return [];
+    throw error;
+  }
+  // Dirent отражает сам симлинк, поэтому ссылки на чужие папки сюда не попадают.
+  // isSafeName дополнительно отсеивает имена с управляющими символами и другими
+  // байтами, которые нельзя безопасно адресовать ключом карточки.
+  // numeric: true – чтобы «hook-2» шла перед «hook-10», а не после (обычный
+  // лексикографический порядок ставит '1' раньше '2', то есть 'hook-10' раньше 'hook-2').
+  return dirents
+    .filter((dirent) => dirent.isDirectory() && !dirent.name.startsWith('.') && isSafeName(dirent.name))
+    .map((dirent) => dirent.name)
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+}
+
+function projectFile(projectDir, relative) {
+  try {
+    return resolveProjectPath(projectDir, relative, { mustExist: true, type: 'file' });
+  } catch (_) {
+    return null;
+  }
+}
+
+function renderHistory(projectDir, manifest) {
+  return manifest.renders
+    .filter((render) => render.status === 'complete')
+    .sort((left, right) => right.version - left.version)
+    .flatMap((render) => {
+      let names = [];
+      try {
+        names = fs.readdirSync(path.join(projectDir, ...render.dir.split('/')), { withFileTypes: true })
+          .filter((dirent) => dirent.isFile()
+            && dirent.name.toLowerCase().endsWith('.mp4')
+            && !RAW_RENDER_SUFFIX.test(dirent.name))
+          .map((dirent) => dirent.name)
+          // final.mp4 всегда первым, дальше по алфавиту – человек должен сразу видеть
+          // главный файл рендера, даже если у него несколько экспортов.
+          .sort((left, right) => {
+            const leftIsFinal = left.toLowerCase() === 'final.mp4';
+            const rightIsFinal = right.toLowerCase() === 'final.mp4';
+            if (leftIsFinal !== rightIsFinal) return leftIsFinal ? -1 : 1;
+            return left.localeCompare(right);
+          });
+      } catch (_) {
+        names = [];
+      }
+      const version = `v${String(render.version).padStart(2, '0')}`;
+      const selected = names.slice(0, 3);
+      return selected.map((name) => ({
+        // Имя файла в подписи нужно только когда файлов несколько – иначе это шум.
+        label: selected.length > 1
+          ? `Рендер ${version} – ${render.label} (${name})`
+          : `Рендер ${version} – ${render.label}`,
+        path: `${render.dir}/${name}`,
+      }));
+    });
+}
+
+// Черновик lesson с b-roll, для которого человек ещё не выбрал материал, – обычное
+// состояние (выбор делается в Review), но approveBrief его отклонит. Условие – ровно то,
+// что проверяет движок (scripts/project/workspace.js, approveBrief). Нечитаемый JSON –
+// не наша забота здесь: движок откажет сам, а сервер покажет это как APPROVAL_BLOCKED.
+function lessonApprovalBlocker(briefBytes) {
+  let brief;
+  try {
+    brief = JSON.parse(briefBytes.toString('utf8'));
+  } catch (_) {
+    return null;
+  }
+  const scenes = brief && Array.isArray(brief.scenes) ? brief.scenes : [];
+  const unresolvedBroll = scenes.some((scene) => scene?.scene === 'broll'
+    && scene.brollIntent && !scene.brollMedia && !scene.brollSrc);
+  return unresolvedBroll ? BROLL_BLOCKER : null;
+}
+
+// «Что вырезал агент»: вырезы активной нарезки по её списку кусков. Список не читается, не
+// похож на список кусков или его байты не совпадают с паспортом (правили после сборки) –
+// сводки нет: она описывала бы видео, которого на экране нет. Карточка нарезки от этого не ломается.
+function roughCutCuts(projectDir, roughCut) {
+  const file = projectFile(projectDir, roughCut.editPath);
+  if (!file) return [];
+  let edit;
+  try {
+    // Байты читаем один раз: хеш и разбор должны относиться к одной и той же версии списка.
+    const editBytes = fs.readFileSync(file);
+    if (hashBytes(editBytes) !== roughCut.editSha256) return [];
+    edit = JSON.parse(editBytes.toString('utf8'));
+  } catch (_) {
+    return [];
+  }
+  const keep = edit && Array.isArray(edit.keep) ? edit.keep : [];
+  const validPiece = (piece) => Boolean(piece) && Number.isFinite(piece.start) && Number.isFinite(piece.end)
+    && piece.end > piece.start;
+  if (!keep.length || !keep.every(validPiece) || !Number.isFinite(edit.fps) || edit.fps <= 0) return [];
+  // FPS списка обязателен: иначе хвост короче кадра показался бы фантомным вырезом.
+  return removedRanges(keep, roughCut.sourceDuration, { fps: edit.fps }).map((range) => ({
+    atSec: range.atSec,
+    removedSec: range.removedSec,
+    note: typeof range.note === 'string' ? range.note.slice(0, MAX_CUT_NOTE) : null,
+  }));
+}
+
+// declined – множество ключей declinedKey(папка, путь утверждённого brief) из
+// projects/.pult/state.json: решения «финал не нужен» (DECISIONS.md D-050).
+function standardEntry(folder, projectDir, manifest, card, declined = new Set()) {
+  const briefEntry = manifest.currentBrief
+    ? manifest.briefs.find((brief) => brief.jsonPath === manifest.currentBrief) || null
+    : null;
+  const briefFile = manifest.currentBrief ? projectFile(projectDir, manifest.currentBrief) : null;
+  // Байты brief читаем один раз: хеш и разбор должны относиться к одной и той же версии.
+  const briefBytes = briefFile ? fs.readFileSync(briefFile) : null;
+  const isLessonDraft = Boolean(briefEntry && briefEntry.status === 'draft'
+    && (briefEntry.kind || 'lesson') === 'lesson');
+  const pendingComments = countNewComments(projectDir);
+  // Черновая нарезка активна для пульта, только пока её копия лежит на диске.
+  const activeCut = activeRoughCut(manifest);
+  const roughCutExists = Boolean(activeCut && projectFile(projectDir, activeCut.filePath));
+  const derived = deriveVariantStatus({
+    manifest,
+    currentBriefStatus: briefEntry ? briefEntry.status : null,
+    currentBriefSha256: briefBytes ? hashBytes(briefBytes) : null,
+    finalExists: Boolean(projectFile(projectDir, manifest.final)),
+    pendingComments,
+    approvalBlocker: isLessonDraft && briefBytes ? lessonApprovalBlocker(briefBytes) : null,
+    roughCutExists,
+    finalDeclined: Boolean(manifest.currentBrief) && declined.has(declinedKey(folder, manifest.currentBrief)),
+  });
+  return {
+    key: folder,
+    folder,
+    kind: 'standard',
+    title: (card && card.title) || manifest.name,
+    group: card && card.group ? card.group : null,
+    variantLabel: (card && card.variantLabel) || 'Основной',
+    projectKind: manifest.projectKind || 'video',
+    updatedAt: manifest.updatedAt,
+    pendingComments,
+    reviewable: Boolean(manifest.currentBrief),
+    history: renderHistory(projectDir, manifest),
+    roughCutCuts: roughCutExists ? roughCutCuts(projectDir, activeCut) : [],
+    finalQa: finalQaSummary(projectDir, manifest),
+    ...derived,
+  };
+}
+
+// Фоновая проверка продвинутого финала (#110) для подписи под плеером: идёт, пройдена, есть замечания
+// или не выполнена. Без путей и текста ошибок – их агент читает во входящих.
+function finalQaSummary(projectDir, manifest) {
+  let job = null;
+  try { job = finalQaState(projectDir, manifest); } catch (_) { return null; }
+  if (!job) return null;
+  if (job.status === 'queued' || job.status === 'running') return { state: 'running' };
+  if (job.status === 'failed' || job.verdict === 'error' || job.error) return { state: 'failed' };
+  return { state: job.verdict === 'pass' ? 'pass' : 'warn' };
+}
+
+function legacyEntries(folder, projectDir, card) {
+  const { legacy } = card;
+  return legacy.variants.map((variant, index) => {
+    const pendingComments = countNewComments(projectDir, variant.video);
+    const file = projectFile(projectDir, variant.video);
+    let updatedAt = new Date(0).toISOString();
+    if (file) {
+      try {
+        updatedAt = fs.statSync(file).mtime.toISOString();
+      } catch (_) {
+        // Файл мог исчезнуть между resolveProjectPath и statSync – остаётся эпоха.
+      }
+    }
+    let nextStep;
+    let status = legacy.status;
+    if (pendingComments > 0) {
+      status = 'working';
+      nextStep = `Ждёт агента: ${pluralEdits(pendingComments)}`;
+    } else if (!file) {
+      // Карточка ссылается на видео, которого нет на диске – это ошибка карточки,
+      // а не обычный шаг монтажа: чинить её агенту, поэтому ролик «В работе», а не
+      // в заявленном карточкой «Готов» или «Ждёт меня».
+      status = 'working';
+      nextStep = MISSING_VIDEO_STEP;
+    } else {
+      nextStep = legacy.nextStep || LEGACY_STEPS[legacy.status];
+    }
+    return {
+      key: `${folder}#${index}`,
+      folder,
+      kind: 'legacy',
+      // Папка может быть в NFD (macOS), а заголовок должен выглядеть привычно;
+      // сам ключ остаётся «сырым», чтобы не разойтись с именем на диске.
+      title: card.title || folder.normalize('NFC'),
+      group: card.group || null,
+      variantLabel: variant.label,
+      projectKind: 'video',
+      updatedAt,
+      pendingComments,
+      reviewable: false,
+      history: [],
+      status,
+      nextStep,
+      video: file ? { kind: variant.final ? 'final' : 'preview', path: variant.video, sha256: null } : null,
+      approvable: false,
+      needsFinal: false,
+      finalDeclined: false,
+      briefPath: null,
+      previewSha256: null,
+      roughCut: null,
+      roughCutConfirmable: false,
+      roughCutCuts: [],
+    };
+  });
+}
+
+// Сканирует одну папку и классифицирует её без исключений наружу – сервер вызывает эту
+// функцию точечно по одному ключу (Task 10), в том числе с именем папки, пришедшим из URL.
+// Поэтому здесь же – полная проверка безопасности имени, а не только та, что уже прошла
+// через listFolders.
+function scanFolder(projectsDir, folder) {
+  return scanFolderIn(projectsDir, folder, new Set(listFolders(projectsDir)), declinedSet(readPultState(projectsDir)));
+}
+
+// knownFolders – уже прочитанный listFolders(projectsDir): scanProjects читает папку
+// projects/ один раз на весь каталог, а не заново для каждой папки ролика. declined – так же
+// один раз прочитанные решения «финал не нужен» из состояния пульта.
+function scanFolderIn(projectsDir, folder, knownFolders, declined) {
+  const empty = () => ({ entries: [], unregistered: [], broken: [] });
+  if (!isSafeName(folder)) return empty();
+  // APFS и NTFS по умолчанию нечувствительны к регистру и нормализации Unicode:
+  // проверка через lstat нашла бы папку «Clip» и по ключу «clip», и по NFC-записи
+  // NFD-имени. Сервер обращается сюда по ключу из браузера, поэтому разное написание
+  // одной и той же папки не должно давать один результат – иначе архивные id, кэш и
+  // билеты утверждения разъедутся между «одинаковыми» на вид ключами. Сверяем точное
+  // имя из readdir, а не доверяем тому, что нашла файловая система; заодно это и есть
+  // проверка «папка реально существует, это каталог и не симлинк», которую раньше
+  // делал отдельный lstat – listFolders уже её выполняет.
+  if (!knownFolders.has(folder)) return empty();
+
+  const projectDir = path.join(projectsDir, folder);
+
+  if (folder.includes('#')) {
+    // '#' в имени папки конфликтует с разделителем варианта в ключе (`folder#index`):
+    // папка `series#0` неотличима от варианта 0 папки `series`. Дальше не сканируем.
+    return { entries: [], unregistered: [], broken: [{ folder, error: FOLDER_HASH_ERROR }] };
+  }
+
+  const cardResult = readPultCard(projectDir);
+  const card = cardResult.ok ? cardResult.card : null;
+  const hasManifest = fs.existsSync(path.join(projectDir, 'project.json'));
+
+  if (hasManifest) {
+    let manifest = null;
+    let manifestReadOk = true;
+    try {
+      manifest = readProjectManifest(projectDir);
+    } catch (_) {
+      manifestReadOk = false;
+    }
+    if (manifestReadOk) {
+      try {
+        const entry = standardEntry(folder, projectDir, manifest, card, declined);
+        // Карточка стандартного проекта необязательна, но если она есть и битая –
+        // человек должен увидеть это в «Не читается», а не потерять её незаметно.
+        const broken = cardResult.ok ? [] : [{ folder, error: cardResult.error }];
+        return { entries: [entry], unregistered: [], broken };
+      } catch (_) {
+        // Паспорт прочитался, но что-то внутри проекта (например, brief) само не
+        // читается – это отдельный класс ошибки от «паспорт не читается».
+        return { entries: [], unregistered: [], broken: [{ folder, error: FOLDER_UNREADABLE_ERROR }] };
+      }
+    }
+    if (!(card && card.legacy)) {
+      return { entries: [], unregistered: [], broken: [{ folder, error: MANIFEST_UNREADABLE_ERROR }] };
+    }
+    // project.json битый, но рядом легитимная legacy-карточка – читаем как legacy ниже.
+  }
+
+  if (!cardResult.ok) {
+    return { entries: [], unregistered: [], broken: [{ folder, error: cardResult.error }] };
+  }
+  if (card && card.legacy) {
+    return { entries: legacyEntries(folder, projectDir, card), unregistered: [], broken: [] };
+  }
+  return { entries: [], unregistered: [{ folder }], broken: [] };
+}
+
+// Ключ варианта – `folder` либо `folder#index`; для точечного поиска (Task 10) нужно имя
+// самой папки на диске. Ключ может прийти прямо из запроса браузера, поэтому не строка –
+// не паспорт ролика, а просто пустой результат.
+function folderFromKey(key) {
+  if (typeof key !== 'string') return '';
+  return key.replace(/#\d{1,3}$/, '');
+}
+
+// Только чтение: сканирование никогда не меняет папки роликов. Одна нечитаемая или
+// неожиданно ведущая себя папка не должна ронять весь каталог – сервер зовёт эту функцию
+// на каждый запрос.
+function scanProjects({ projectsDir }) {
+  const entries = [];
+  const unregistered = [];
+  const broken = [];
+  const folders = listFolders(projectsDir);
+  const knownFolders = new Set(folders);
+  const declined = declinedSet(readPultState(projectsDir));
+  for (const folder of folders) {
+    let result;
+    try {
+      result = scanFolderIn(projectsDir, folder, knownFolders, declined);
+    } catch (_) {
+      result = { entries: [], unregistered: [], broken: [{ folder, error: FOLDER_UNREADABLE_ERROR }] };
+    }
+    entries.push(...result.entries);
+    unregistered.push(...result.unregistered);
+    broken.push(...result.broken);
+  }
+  return { entries, unregistered, broken };
+}
+
+module.exports = { ENTRY_KEY, folderFromKey, scanFolder, scanProjects };

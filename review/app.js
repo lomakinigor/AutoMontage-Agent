@@ -130,8 +130,15 @@ function renderMetadata(state, token) {
       previewVideo.preload = 'metadata';
       previewVideo.dataset.previewVideo = '';
       previewVideo.setAttribute('aria-label', 'Смонтированный предпросмотр');
-      previewFrame.replaceChildren(previewVideo);
+      // «ЧЕРНОВИК» поверх плеера, пока brief не утверждён (#110): чистый полный preview сам надписи не несёт.
+      const draftOverlay = document.createElement('div');
+      draftOverlay.className = 'preview-draft';
+      draftOverlay.dataset.draftOverlay = '';
+      draftOverlay.setAttribute('aria-hidden', 'true');
+      draftOverlay.textContent = 'ЧЕРНОВИК';
+      previewFrame.replaceChildren(previewVideo, draftOverlay);
     }
+    previewFrame.querySelector('[data-draft-overlay]').hidden = state.brief.status === 'approved';
     const previewUrl = authenticatedMediaUrl(`${state.currentPreview.url}?v=${encodeURIComponent(state.currentPreview.generatedAt)}`, token);
     if (previewVideo.getAttribute('src') !== previewUrl) previewVideo.src = previewUrl;
     previewFrame.hidden = false;
@@ -444,7 +451,9 @@ function createEditor(initialState, token) {
     previewStatus.textContent = previewBusy
       ? 'Создаём смонтированный preview…'
       : state.brief.status === 'approved'
-        ? 'Утверждено. Финальный рендер запускается отдельно.'
+        ? state.finalFromPreview
+          ? 'Утверждено. Финал готов – можно забирать; проверка финала идёт в фоне.'
+          : 'Утверждено. Финальный рендер запускается отдельно.'
         : commands.length
           ? 'Сначала сохраните изменения.'
           : state.currentPreview?.stale
@@ -482,7 +491,12 @@ function createEditor(initialState, token) {
         );
         if (!response.ok) throw new Error('preview');
         const job = await response.json();
-        if (job.status === 'failed') throw new Error('preview');
+        if (job.status === 'failed') {
+          // Барьер проверок остановил preview: показываем его причину (без путей, её готовит сервер).
+          throw Object.assign(new Error('preview'), {
+            reason: job.error === 'PREVIEW_BLOCKED' && typeof job.reason === 'string' ? job.reason : null,
+          });
+        }
         if (job.status === 'complete') {
           state = prepareBrowserState(job.state, token);
           validation = {
@@ -493,9 +507,13 @@ function createEditor(initialState, token) {
           done = true;
         }
       }
-    } catch (_) {
+    } catch (error) {
       showEditError(
-        'Preview не готов. Предыдущий файл сохранён; обновите состояние и повторите.',
+        error?.reason
+          ? error.reason.startsWith('машина занята')
+            ? `Машина занята другой задачей (${error.reason}). Повторите preview позже.`
+            : `Preview не опубликован: ${error.reason}. Предыдущий файл сохранён; исправьте и повторите.`
+          : 'Preview не готов. Предыдущий файл сохранён; обновите состояние и повторите.',
       );
     } finally {
       previewBusy = false;

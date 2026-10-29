@@ -255,6 +255,31 @@ h1 {
   background: hsl(220 14% 3%);
 }
 
+/* Оверлей «ЧЕРНОВИК» над смонтированным preview, пока brief не утверждён (#110). */
+[data-preview-frame] {
+  position: relative;
+}
+
+.preview-draft {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 5px 10px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.48);
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.preview-draft[hidden] {
+  display: none;
+}
+
 video {
   display: block;
   width: 100%;

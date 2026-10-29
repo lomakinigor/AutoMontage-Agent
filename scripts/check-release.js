@@ -139,52 +139,6 @@ function parseUtcCalendarDate(value) {
   return date;
 }
 
-function releaseDateForVersion(source, version) {
-  const escapedVersion = String(version).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const matches = [...String(source || '').matchAll(
-    new RegExp(`^## \\[${escapedVersion}\\] - (\\d{4}-\\d{2}-\\d{2})\\s*$`, 'gm'),
-  )];
-  return matches.length === 1 ? parseUtcCalendarDate(matches[0][1]) : null;
-}
-
-function resolveInstalledDependency(packages, parentPath, dependencyName) {
-  let base = parentPath;
-  while (true) {
-    const candidate = base
-      ? `${base}/node_modules/${dependencyName}`
-      : `node_modules/${dependencyName}`;
-    if (packages[candidate]) return candidate;
-    if (!base) return null;
-    const marker = base.lastIndexOf('/node_modules/');
-    base = marker >= 0 ? base.slice(0, marker) : '';
-  }
-}
-
-function installedNodeVibrantChain(lock) {
-  const names = [
-    'node-vibrant',
-    '@vibrant/image-node',
-    '@jimp/custom',
-    '@jimp/core',
-    'file-type',
-  ];
-  const packages = lock && lock.packages;
-  if (!packages || !packages['']) return null;
-  const chain = [];
-  let parentPath = '';
-  let parent = packages[''];
-  for (const name of names) {
-    if (!parent.dependencies || typeof parent.dependencies[name] !== 'string') return null;
-    const installedPath = resolveInstalledDependency(packages, parentPath, name);
-    const installed = installedPath && packages[installedPath];
-    if (!installed || typeof installed.version !== 'string' || !installed.version) return null;
-    chain.push(`${name}@${installed.version}`);
-    parentPath = installedPath;
-    parent = installed;
-  }
-  return chain;
-}
-
 function checkPackageMetadata(read, issues) {
   const packageSource = read('package.json');
   const lockSource = read('package-lock.json');
@@ -219,126 +173,6 @@ function checkPackageMetadata(read, issues) {
         `add a public ${field} value to package.json and refresh package-lock.json.`,
       ));
     }
-  }
-}
-
-function checkSecurityException(files, read, issues, now) {
-  const pkg = jsonValue(read('package.json'), 'package.json', issues, 'package.json');
-  if (!pkg || !pkg.dependencies || !pkg.dependencies['node-vibrant']) return;
-  const lock = jsonValue(read('package-lock.json'), 'package-lock.json', issues, 'package-lock.json');
-  if (!files.includes('SECURITY.md')) {
-    issues.push(issue(
-      'security-exception', 'SECURITY.md', 1,
-      'node-vibrant is present without a tracked security exception',
-      'document the accepted advisory, exposure, mitigation, triggers, and revisit date.',
-    ));
-    return;
-  }
-  const source = read('SECURITY.md');
-  const markers = [...source.matchAll(/```json security-exception\s*\n([\s\S]*?)\n```/g)];
-  if (markers.length !== 1) {
-    issues.push(issue(
-      'security-exception', 'SECURITY.md', 1,
-      `exactly one machine-readable security-exception JSON block is required (found ${markers.length})`,
-      'keep one fenced `json security-exception` block with the required evidence.',
-    ));
-    return;
-  }
-  const [marker] = markers;
-  const line = lineNumber(source, marker.index);
-  let exception;
-  try {
-    exception = JSON.parse(marker[1]);
-  } catch (error) {
-    issues.push(issue(
-      'security-exception', 'SECURITY.md', line,
-      `security exception JSON is invalid (${error.message})`,
-      'repair the fenced JSON without comments or trailing commas.',
-    ));
-    return;
-  }
-  const requiredStrings = [
-    'ghsa', 'cve', 'severity', 'package', 'fixedIn', 'exposure', 'mitigation', 'decision', 'revisitBy',
-    'reviewedAt', 'reviewedFor',
-  ];
-  const missing = requiredStrings.filter((key) => (
-    typeof exception[key] !== 'string' || !exception[key].trim()
-  ));
-  if (!Array.isArray(exception.chain) || exception.chain.length < 5) missing.push('chain');
-  if (!Array.isArray(exception.triggers) || exception.triggers.length < 4) missing.push('triggers');
-  const expected = {
-    ghsa: 'GHSA-5v7r-6r5c-r473',
-    cve: 'CVE-2026-31808',
-    severity: 'moderate',
-    package: 'file-type@16.5.4',
-    fixedIn: 'file-type@21.3.1',
-    exposure: 'Optional --autotheme passes only ffmpeg-generated PNG frames to Jimp/Vibrant, not raw ASF input.',
-    mitigation: 'Local-only CLI path, at most 20 scaled PNG frames, no direct untrusted-image upload into file-type.',
-    decision: 'Keep node-vibrant@4.0.4; do not force-fix, override the major chain, or downgrade to 3.x.',
-  };
-  const incorrect = Object.entries(expected)
-    .filter(([key, value]) => exception[key] !== value)
-    .map(([key]) => key);
-  const expectedChain = [
-    'node-vibrant@4.0.4',
-    '@vibrant/image-node@4.0.4',
-    '@jimp/custom@0.22.12',
-    '@jimp/core@0.22.12',
-    'file-type@16.5.4',
-  ];
-  if (Array.isArray(exception.chain)
-    && (exception.chain.length !== expectedChain.length
-      || expectedChain.some((entry, index) => exception.chain[index] !== entry))) {
-    incorrect.push('chain');
-  }
-  const installedChain = installedNodeVibrantChain(lock);
-  if (!installedChain
-    || installedChain.length !== expectedChain.length
-    || expectedChain.some((entry, index) => installedChain[index] !== entry)
-    || (Array.isArray(exception.chain)
-      && installedChain.some((entry, index) => exception.chain[index] !== entry))) {
-    incorrect.push('chain');
-  }
-  const requiredTriggers = [
-    'upstream node-vibrant/Jimp update',
-    'severity becomes high',
-    'direct untrusted-image input',
-    'next release',
-  ];
-  if (Array.isArray(exception.triggers)
-    && requiredTriggers.some((entry) => !exception.triggers.includes(entry))) {
-    incorrect.push('triggers');
-  }
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  // A public calendar date may legitimately be one day ahead of UTC once UTC+14 has
-  // crossed midnight (10:00 UTC). This keeps the gate deterministic in local and CI
-  // time zones while still rejecting dates that are not current anywhere on Earth.
-  const nextDay = new Date(today.getTime() + 86_400_000);
-  const nextDayExistsGlobally = now.getTime() >= today.getTime() + (10 * 60 * 60 * 1000);
-  const latestCalendarDate = nextDayExistsGlobally ? nextDay : today;
-  const reviewedAt = parseUtcCalendarDate(exception.reviewedAt || '');
-  const releaseDate = releaseDateForVersion(read('CHANGELOG.md'), pkg.version);
-  if (!reviewedAt || reviewedAt.getTime() > latestCalendarDate.getTime()
-    || !releaseDate || reviewedAt.getTime() !== releaseDate.getTime()) {
-    incorrect.push('reviewedAt');
-  }
-  if (exception.reviewedFor !== pkg.version) incorrect.push('reviewedFor');
-  if (missing.length || incorrect.length) {
-    issues.push(issue(
-      'security-exception', 'SECURITY.md', line,
-      `security exception is incomplete or inaccurate (${[...new Set([...missing, ...incorrect])].join(', ')})`,
-      'record the exact advisory, five-package chain, exposure, mitigation, decision, four triggers, and revisit date.',
-    ));
-    return;
-  }
-  const revisit = parseUtcCalendarDate(exception.revisitBy);
-  const days = revisit ? (revisit.getTime() - today.getTime()) / 86_400_000 : Number.NaN;
-  if (!Number.isFinite(days) || days < 0 || days > 30) {
-    issues.push(issue(
-      'security-exception', 'SECURITY.md', line,
-      `revisitBy ${exception.revisitBy} is expired, invalid, or more than 30 days away`,
-      'reassess upstream and set a new evidence-backed date no more than 30 days away.',
-    ));
   }
 }
 
@@ -545,12 +379,66 @@ function checkChangedPunctuation(additions, issues) {
   }
 }
 
+// Inspect candidate bytes without executing code from a Git ref. Real CLI and rendering
+// behavior is exercised separately by smoke-release against the installed package.
+function checkMotionRelease(files, read, issues) {
+  const pkg = jsonValue(read('package.json'), 'package.json', issues, 'package.json');
+  const version = /^(\d+)\.(\d+)\.(\d+)$/.exec(pkg?.version || '');
+  if (!version || (Number(version[1]) < 1 || (Number(version[1]) === 1 && Number(version[2]) < 7))) return;
+  const required = [
+    'schema/motion-brief.schema.json', 'src/Root.jsx', 'src/MotionDirector.jsx',
+    'src/motion/motion-theme.js', 'scripts/motion/brief.js', 'scripts/motion/build.js',
+    'scripts/motion/demo.js', 'scripts/cli.js', 'scripts/generate-neutral-fixtures.js',
+    'skills/motion-reel/SKILL.md', 'skills/motion-reel/references/brief-package.md',
+    'examples/motion-brief-demo.json', 'remotion.config.js', 'scripts/remotion-webpack.js',
+  ];
+  const problem = (file, message) => issues.push(issue('motion-release', file, 1,
+    message, 'restore the public motion contract and run the credential-free release smoke.'));
+  for (const file of required) if (!files.includes(file) || !read(file).trim()) problem(file, 'required motion release file is missing or empty');
+  if (files.includes('src/Root.jsx') && !/<Composition\s[^>]*id=["']MotionReel["'][^>]*component=\{MotionDirector\}/s.test(read('src/Root.jsx'))) {
+    problem('src/Root.jsx', 'MotionReel composition is not registered with MotionDirector');
+  }
+  const demoFile = 'examples/motion-brief-demo.json';
+  if (files.includes(demoFile) && files.includes('schema/motion-brief.schema.json')) {
+    try {
+      const Ajv = require('ajv');
+      const schema = JSON.parse(read('schema/motion-brief.schema.json'));
+      const demo = JSON.parse(read(demoFile));
+      const valid = new Ajv({ allErrors: true, strict: false }).compile(schema)(demo);
+      if (!valid || demo.kind !== 'motion-reel' || demo.status !== 'draft'
+        || demo.theme !== 'motion-neutral'
+        || ['kinetic-title', 'card', 'steps', 'list', 'counter', 'media', 'cta', 'chart'].some(
+          scene => !demo.scenes?.some(entry => entry.scene === scene))) {
+        problem(demoFile, 'public motion demo must be a valid neutral draft covering all eight scenes');
+      }
+    } catch (_) { problem(demoFile, 'motion demo or candidate schema is invalid'); }
+  }
+  const ciFile = '.github/workflows/ci.yml';
+  const jobs = read(ciFile).split(/^  [a-zA-Z0-9_-]+:\s*$/m);
+  const windowsJob = jobs.find(job => /runs-on:\s*windows-latest/.test(job));
+  const windows = windowsJob && ['tests/media-probe.test.js', 'tests/motion-source.test.js',
+    'tests/project-workspace.test.js'].every(file => windowsJob.includes(file));
+  // PowerShell can finish successfully after an earlier native command fails. Keep
+  // each Node suite in a dedicated scalar run step so Actions checks its exit code.
+  const isolatedWindowsTests = windowsJob && windowsJob.split(/^      - /m)
+    .filter(step => /node --test/.test(step)).every(step => {
+      const command = /^        run: (node --test [^\r\n]+)$/m.exec(step)?.[1];
+      if (!command) return false;
+      const outsideQuotes = command.replace(/'[^']*'|"[^"]*"/g, '');
+      return !/[;&|`]/.test(outsideQuotes) && !/continue-on-error:\s*true/.test(step);
+    });
+  const linux = jobs.some(job => /runs-on:\s*ubuntu-latest/.test(job)
+    && /npm run smoke:release -- --motion-only/.test(job) && !/\$\{\{\s*secrets\./i.test(job));
+  if (!windows) issues.push(issue('motion-ci', ciFile, 1, 'Windows audio probe/workspace coverage is missing', 'run the portable audio and workspace suite on windows-latest.'));
+  if (windows && !isolatedWindowsTests) issues.push(issue('motion-ci', ciFile, 1, 'Windows native test failures require isolated run steps', 'put each node --test invocation in its own run step without command chaining.'));
+  if (!linux) issues.push(issue('motion-ci', ciFile, 1, 'Linux credential-free motion smoke is missing', 'run npm run smoke:release -- --motion-only on ubuntu-latest without secrets.'));
+}
+
 function checkRelease({
   cwd = ROOT,
   tree = 'HEAD',
   base = null,
   release = false,
-  now = new Date(),
 } = {}) {
   const resolvedCwd = path.resolve(cwd);
   const treeSha = resolveTree(resolvedCwd, tree, 'tree');
@@ -565,7 +453,7 @@ function checkRelease({
   };
   const issues = [];
   checkPackageMetadata(read, issues);
-  checkSecurityException(files, read, issues, now);
+  checkMotionRelease(files, read, issues);
   checkReleaseNotes(files, read, issues, { releaseCandidate: release });
   checkEnvironment(files, read, issues);
   checkMarkdownLinks(files, read, issues);

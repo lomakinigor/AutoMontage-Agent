@@ -23,7 +23,7 @@
 | Компонент | Версия | Роль |
 |---|---|---|
 | Node.js | ≥ 20 (тест 22.x) | движок Remotion, скрипты |
-| Remotion | 4.0.504 (`remotion`, `@remotion/cli`) | покадровый рендер графики из React |
+| Remotion | 4.0.536 (`remotion`, `@remotion/cli`) | покадровый рендер графики из React |
 | React / react-dom | 19.0.0 | компоненты блоков |
 | Python 3 | 3.10+ | транскрипция |
 | faster-whisper | 1.2.1 (`pip install faster-whisper`) | речь → текст + словные таймкоды, ЛОКАЛЬНО, бесплатно |

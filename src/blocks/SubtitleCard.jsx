@@ -17,7 +17,7 @@ export const SubtitleCard = ({ text = 'РЕПЛИКА', accent = false, sub = nu
       ...centerPos(pos, { bottomGap: 210 }),
       transform: `scale(${scale})`, opacity: s,
     }}>
-      <div style={{
+      <div data-qa-text="subtitle-text" style={{
         display: 'inline-block',
         fontFamily: t.fonts.display, fontWeight: 700, textTransform: 'uppercase',
         fontSize: 62, letterSpacing: 1,
@@ -31,7 +31,7 @@ export const SubtitleCard = ({ text = 'РЕПЛИКА', accent = false, sub = nu
         {text}
       </div>
       {sub && (
-        <div style={{
+        <div data-qa-text="subtitle-sub" style={{
           marginTop: 12, fontFamily: t.fonts.mono, fontWeight: 500, fontSize: 24,
           letterSpacing: 2, color: t.colors.textSoft, textTransform: 'uppercase',
         }}>{sub}</div>

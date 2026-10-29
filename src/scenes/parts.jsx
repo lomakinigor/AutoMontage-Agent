@@ -47,7 +47,7 @@ export const Chip = ({ text }) => {
   const t = useTheme(); const k = tk(t);
   const { width, height } = useVideoConfig(); const s = safeFor(width, height);
   return (
-    <div style={{ position: 'absolute', top: s.top - 8, left: s.left, background: k.orange, color: k.bg, fontFamily: k.fonts.mono, fontWeight: 700, fontSize: 30, letterSpacing: 3, padding: '14px 26px', borderRadius: 10, maxWidth: width - s.left - s.right, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{'▸_ ' + text}</div>
+    <div data-qa-text="chip-title" style={{ position: 'absolute', top: s.top - 8, left: s.left, background: k.orange, color: k.bg, fontFamily: k.fonts.mono, fontWeight: 700, fontSize: 30, letterSpacing: 3, padding: '14px 26px', borderRadius: 10, maxWidth: width - s.left - s.right, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{'▸_ ' + text}</div>
   );
 };
 
@@ -59,7 +59,7 @@ export const FitHeading = ({ cream = '', orange = '', maxSize = 118, width, styl
   let size = maxSize;
   try { size = Math.min(maxSize, fitText({ text: longest, withinWidth: width, fontFamily: k.fonts.display, fontWeight: 700 }).fontSize); } catch (e) { /* noop */ }
   return (
-    <div style={{ fontFamily: k.fonts.display, fontWeight: 700, textTransform: 'uppercase', lineHeight: 0.92, fontSize: size, ...style }}>
+    <div data-qa-text="heading-text" style={{ fontFamily: k.fonts.display, fontWeight: 700, textTransform: 'uppercase', lineHeight: 0.92, fontSize: size, ...style }}>
       {cream ? <div style={{ color: k.cream }}>{cream}</div> : null}
       {orange ? <div style={{ color: k.orange }}>{orange}</div> : null}
     </div>

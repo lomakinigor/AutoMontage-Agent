@@ -130,3 +130,58 @@ test('preview QA requires one explicit current full or excerpt preview', (t) => 
 
   assert.throws(() => runPreviewQa({ projectDir: fixture.workspace.dir }), /current preview|предпросмотр/i);
 });
+
+test('motion QA measures narration without music and rejects stale narration/brief', (t) => {
+  const { fixture, fakeMedia } = require('./helpers/motion-workflow-fixture.cjs');
+  const { runPreview } = require('../scripts/preview');
+  const f = fixture(t);
+  runPreview({ projectDir: f.workspace.dir, briefPath: f.published.relativePath, open: false }, fakeMedia());
+  const result = runPreviewQa({ projectDir: f.workspace.dir }, {
+    runToolImpl() {}, probeVideoImpl: () => ({ width: 320, height: 568, fps: 30, duration: 2 }),
+    measureAudioImpl({ role, sourcePath }) { assert.equal(role, 'voice'); assert.equal(sourcePath, f.workspace.sourcePath); return -18; },
+  });
+  assert.equal(result.audio.voiceDb, -18);
+  fs.appendFileSync(f.workspace.sourcePath, 'changed');
+  assert.throws(() => runPreviewQa({ projectDir: f.workspace.dir }, { runToolImpl() {}, probeVideoImpl: () => ({ width: 320, height: 568, fps: 30, duration: 2 }) }), /source|narration|stale/i);
+});
+
+test('motion QA dispatches from stored kind and refuses a preview of an older draft', (t) => {
+  const { fixture, fakeMedia } = require('./helpers/motion-workflow-fixture.cjs');
+  const { runPreview } = require('../scripts/preview');
+  const { publishBriefRevision, readProjectManifest } = require('../scripts/project/workspace');
+  const f = fixture(t);
+  runPreview({ projectDir: f.workspace.dir, briefPath: f.published.relativePath, open: false }, fakeMedia());
+  const deps = { runToolImpl() {}, probeVideoImpl: () => ({ width: 320, height: 568, fps: 30, duration: 2 }), measureAudioImpl: () => -18 };
+  const original = fs.readFileSync(f.published.jsonPath);
+  const tampered = { ...f.brief }; delete tampered.kind;
+  fs.writeFileSync(f.published.jsonPath, JSON.stringify(tampered));
+  assert.throws(() => runPreviewQa({ projectDir: f.workspace.dir }, deps), /kind|invalid/i);
+  fs.writeFileSync(f.published.jsonPath, original);
+  f.workspace.manifest = readProjectManifest(f.workspace.dir);
+  publishBriefRevision(f.workspace, { kind: 'motion-reel', brief: { ...f.brief, title: 'Новая ревизия' } });
+  assert.throws(() => runPreviewQa({ projectDir: f.workspace.dir }, deps), /stale|current/i);
+});
+
+test('motion QA labels the measured source as voice by default and soundtrack for a music-only reel', (t) => {
+  const { fixture, fakeMedia } = require('./helpers/motion-workflow-fixture.cjs');
+  const { runPreview } = require('../scripts/preview');
+  const { publishBriefRevision, readProjectManifest } = require('../scripts/project/workspace');
+  const deps = { runToolImpl() {}, probeVideoImpl: () => ({ width: 320, height: 568, fps: 30, duration: 2 }), measureAudioImpl: () => -17.6 };
+  const f = fixture(t);
+  runPreview({ projectDir: f.workspace.dir, briefPath: f.published.relativePath, open: false }, fakeMedia());
+  assert.equal(runPreviewQa({ projectDir: f.workspace.dir }, deps).audio.label, 'voice');
+  f.workspace.manifest = readProjectManifest(f.workspace.dir);
+  const published = publishBriefRevision(f.workspace, { kind: 'motion-reel', brief: { ...f.brief, audioRole: 'music' } });
+  runPreview({ projectDir: f.workspace.dir, briefPath: published.relativePath, open: false }, fakeMedia());
+  const music = runPreviewQa({ projectDir: f.workspace.dir }, deps);
+  assert.equal(music.audio.label, 'soundtrack');
+  assert.equal(music.audio.voiceDb, -17.6);
+});
+
+test('printed QA audio line names mean volume in dB, not loudness', () => {
+  const { formatAudioLine } = require('../scripts/qa-preview');
+  assert.equal(formatAudioLine({ label: 'soundtrack', voiceDb: -17.64 }), 'soundtrack mean -17.6 dB');
+  assert.equal(formatAudioLine({ voiceDb: -18 }), 'voice mean -18.0 dB');
+  assert.equal(formatAudioLine({ voiceDb: -15.2, musicUnderSpeechDb: -36.8 }), 'voice mean -15.2 dB; ducked music mean -36.8 dB');
+  assert.doesNotMatch(formatAudioLine({ label: 'soundtrack', voiceDb: -14 }), /LUFS/);
+});

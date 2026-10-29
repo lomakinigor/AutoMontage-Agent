@@ -6,7 +6,7 @@ const {
   readProjectManifest,
   resolveProjectPath,
 } = require('../project/workspace');
-const { validateLessonBrief } = require('../lesson/brief');
+const { validateStoredBrief } = require('../project/brief-contract');
 const { auditBriefTiming } = require('./timing-audit');
 const { listReviewAssetRecords, listReviewAssets } = require('./assets');
 
@@ -73,8 +73,13 @@ function normalizeTranscript(transcript) {
   return { segments, words };
 }
 
-function browserScene(scene) {
+function browserScene(scene, motion = false) {
   const result = { ...scene };
+  if (motion && result.media) {
+    const { kind, fit, trimStartSec, audioMode } = result.media;
+    result.media = { kind, fit, ...(trimStartSec === undefined ? {} : { trimStartSec }),
+      ...(audioMode === undefined ? {} : { audioMode }) };
+  }
   delete result.faceSrc;
   delete result.brollSrc;
   if (result.brollReview !== true) delete result.brollReview;
@@ -131,6 +136,8 @@ function buildReviewCandidateBase({ canonicalBrief, assetFiles } = {}) {
         audioMode: persisted.audioMode,
       }
       : { kind: 'image', assetId: resolved.assetId, fit: persisted.fit };
+    // Review не меняет оформление сцены, но обязан донести его до следующей ревизии.
+    if (Object.hasOwn(persisted, 'overlay')) scene.brollMedia.overlay = persisted.overlay;
   }
   return candidate;
 }
@@ -148,7 +155,7 @@ function buildReviewStateFromEdit({ state, brief, timing } = {}) {
       status: brief.status,
       ...(brief.brollReviewPolicy ? { brollReviewPolicy: brief.brollReviewPolicy } : {}),
       title: brief.title,
-      scenes: brief.scenes.map(browserScene),
+      scenes: brief.scenes.map(scene => browserScene(scene)),
     },
     timing,
   };
@@ -167,8 +174,8 @@ function loadReviewBase({ projectDir, briefPath } = {}) {
     briefPath,
   );
   const brief = readJson(briefFilePath, 'brief');
-  const validation = validateLessonBrief(brief);
-  if (!validation.ok) throw new Error('review brief is invalid');
+  try { validateStoredBrief({ manifest, briefPath: entry.jsonPath, brief }); }
+  catch (_) { throw new Error('review brief is invalid'); }
   if (brief.status !== entry.status) {
     throw new Error('review brief status does not match the project manifest');
   }
@@ -204,6 +211,18 @@ function buildReviewState({
       .map((asset, index) => [`asset-${index + 1}`, asset]));
   const reviewBrief = buildReviewCandidateBase({ canonicalBrief: brief, assetFiles: registry });
   const preview = manifest.currentPreview || null;
+  const motion = entry.kind === 'motion-reel';
+  const receipt = motion ? brief.approval : brief.brollApproval;
+  const currentBriefHash = crypto.createHash('sha256').update(fs.readFileSync(base.briefFilePath)).digest('hex');
+  const motionSourceChanged = motion && preview && require('../project/preview-workspace').hashFile(fs,
+    resolveProjectPath(resolvedProjectDir, manifest.source.localPath, { mustExist: true, type: 'file' }),
+  ) !== preview.sourceSha256;
+  const motionApprovalChanged = motion && brief.status === 'approved' && entry.sha256 !== currentBriefHash;
+  // Финал этой версии уже скопирован из просмотренного preview (D-051): рендер не нужен.
+  const latestRender = manifest.renders.find((render) => render.dir === manifest.latestRender);
+  const finalFromPreview = Boolean(preview && brief.status === 'approved' && latestRender
+    && latestRender.status === 'complete' && latestRender.source === 'preview'
+    && latestRender.briefPath === manifest.currentBrief && latestRender.sha256 === preview.sha256);
 
   let transcriptPath;
   try {
@@ -220,10 +239,9 @@ function buildReviewState({
   return {
     project: { id: manifest.id, name: manifest.name },
     session: {
-      editable: Boolean(editable),
+      editable: !motion && Boolean(editable),
       baseRevision: entry.revision,
-      baseHash,
-      manifestHash,
+      ...(motion ? {} : { baseHash, manifestHash }),
     },
     output: {
       width: brief.output.width,
@@ -231,11 +249,11 @@ function buildReviewState({
       fps: brief.output.fps,
       durationInFrames: brief.output.durationInFrames,
     },
-    source: { url: '/media/source' },
+    source: { url: '/media/source', ...(motion ? { mediaKind: 'audio' } : {}) },
     currentPreview: preview ? {
       url: '/media/current-preview',
-      stale: !(brief.status === 'approved' && brief.brollApproval?.draftSha256 === preview.briefSha256 && brief.brollApproval?.previewSha256 === preview.sha256)
-        && (preview.briefPath !== manifest.currentBrief || (preview.briefSha256 ? preview.briefSha256 !== crypto.createHash('sha256').update(fs.readFileSync(base.briefFilePath)).digest('hex') : brief.brollReviewPolicy === 'preview-required')),
+      stale: Boolean(motionSourceChanged || motionApprovalChanged) || !(brief.status === 'approved' && receipt?.draftSha256 === preview.briefSha256 && receipt?.previewSha256 === preview.sha256)
+        && (preview.briefPath !== manifest.currentBrief || (preview.briefSha256 ? preview.briefSha256 !== currentBriefHash : brief.brollReviewPolicy === 'preview-required')),
       kind: preview.kind,
       fromSec: preview.fromSec,
       toSec: preview.toSec,
@@ -244,14 +262,16 @@ function buildReviewState({
       fps: preview.fps,
       generatedAt: preview.generatedAt,
     } : null,
+    finalFromPreview,
     brief: {
+      ...(motion ? { kind: 'motion-reel' } : {}),
       status: reviewBrief.status,
       ...(reviewBrief.brollReviewPolicy ? { brollReviewPolicy: reviewBrief.brollReviewPolicy } : {}),
       title: reviewBrief.title,
-      scenes: reviewBrief.scenes.map(browserScene),
+      scenes: reviewBrief.scenes.map(scene => browserScene(scene, motion)),
     },
     transcript,
-    assets: listReviewAssets({ root, workspace }),
+    assets: motion ? [] : listReviewAssets({ root, workspace }),
     timing: auditBriefTiming({ brief, words: transcript.words }),
     waveform: waveformAvailable ? { url: '/media/waveform' } : null,
   };

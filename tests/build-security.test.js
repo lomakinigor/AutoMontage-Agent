@@ -10,6 +10,7 @@ const {
   frameAnalysisCommand,
   paletteCommand,
   reframeCommand,
+  remotionLayerRenderCommand,
   remotionRenderCommand,
   videoProbeCommand,
 } = require('../scripts/build-commands');
@@ -25,10 +26,17 @@ function runBuildWithIntercept(t, args, {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'automontage-build-intercept-'));
   const hook = path.join(directory, 'hook.js');
   const calls = path.join(directory, 'calls.jsonl');
+  // build.js кладёт промежуточные файлы в os.tmpdir(); держим их внутри directory.
+  const temporary = path.join(directory, 'tmp');
+  fs.mkdirSync(temporary);
   fs.writeFileSync(hook, [
     "const childProcess = require('node:child_process');",
     "const fs = require('node:fs');",
     "const path = require('node:path');",
+    // This fixture never starts a process: replace the lifetime boundary as well
+    // as spawnSync, so a fake successful launch cannot leave a pending ticket.
+    "const execution = require(path.join(process.cwd(), 'scripts/heavy-execution'));",
+    'execution.managedInvocation = (command, args, options) => ({ command, args, options });',
     "const calls = process.env.AUTOMONTAGE_BUILD_CAPTURE;",
     `const ffprobeRates = ${JSON.stringify(ffprobeRates)};`,
     `const materializeFinish = ${JSON.stringify(materializeFinish)};`,
@@ -63,6 +71,9 @@ function runBuildWithIntercept(t, args, {
     encoding: 'utf8',
     env: {
       ...process.env,
+      TMPDIR: temporary,
+      TEMP: temporary,
+      TMP: temporary,
       AUTOMONTAGE_BUILD_CAPTURE: calls,
       NODE_OPTIONS: `--require=${hook}`,
     },
@@ -152,6 +163,34 @@ test('Remotion preview options stay typed and become separate argv entries', () 
       props: `${HOSTILE}.json`,
       ...invalid,
     }), /scale|crf|frame|concurrency|overwrite/i);
+  }
+});
+
+test('remotionLayerRenderCommand validates concurrency the same way remotionRenderCommand does', () => {
+  const resolved = { command: process.execPath, argsPrefix: ['/repo/remotion-cli.js', '--env-file=/repo/config/remotion-public.env'] };
+  const base = { entry: 'motion-v01/src/index.jsx', composition: 'Layer', output: '/tmp/layer.mp4', publicDir: '/tmp/layer-public' };
+  const ok = remotionLayerRenderCommand(resolved, base);
+  assert.ok(ok.args.includes('--concurrency=50%'));
+  const custom = remotionLayerRenderCommand(resolved, { ...base, concurrency: 4 });
+  assert.ok(custom.args.includes('--concurrency=4'));
+  for (const concurrency of ['50%;touch sentinel', '0%', '101%', 0, -1, 257, 'abc', null]) {
+    assert.throws(() => remotionLayerRenderCommand(resolved, { ...base, concurrency }), /concurrency/i);
+  }
+});
+
+test('remotionLayerRenderCommand: gl только angle, кэш только целое в разумных границах', () => {
+  const resolved = { command: process.execPath, argsPrefix: ['/repo/remotion-cli.js', '--env-file=/repo/config/remotion-public.env'] };
+  const base = { entry: 'motion-v01/src/index.jsx', composition: 'Layer', output: '/tmp/layer.mp4', publicDir: '/tmp/layer-public' };
+  const plain = remotionLayerRenderCommand(resolved, base);
+  assert.ok(!plain.args.some((arg) => /^--gl|offthreadvideo/.test(arg)));
+  const gpu = remotionLayerRenderCommand(resolved, { ...base, gl: 'angle', offthreadCacheBytes: 2147483648 });
+  assert.ok(gpu.args.includes('--gl=angle'));
+  assert.ok(gpu.args.includes('--offthreadvideo-cache-size-in-bytes=2147483648'));
+  for (const gl of ['swangle', 'vulkan', 'angle;touch sentinel', 'angle --log=verbose', '', 1, true]) {
+    assert.throws(() => remotionLayerRenderCommand(resolved, { ...base, gl }), /gl/i);
+  }
+  for (const offthreadCacheBytes of [0, 1024, 268435455, 68719476737, 1.5, '2147483648', NaN, -1]) {
+    assert.throws(() => remotionLayerRenderCommand(resolved, { ...base, offthreadCacheBytes }), /cache/i);
   }
 });
 

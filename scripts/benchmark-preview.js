@@ -79,9 +79,11 @@ function buildFrameComparisonArgs({ previewPath, finalPath, atSec, width, height
   if (!Number.isFinite(atSec) || atSec < 0) throw new Error('control frame time is invalid');
   const mask = watermarkMask(width, height);
   const drawbox = `drawbox=x=${mask.x}:y=${mask.y}:w=${mask.width}:h=${mask.height}:color=black:t=fill`;
+  // out_range=tv приводит оба кадра к одному диапазону по их меткам: Remotion на macOS пишет полный
+  // диапазон (yuvj420p, pc), видео слоя kit – ограниченный; на экране они одинаковы, а сырые YUV – нет.
   const filter = [
-    `[0:v]scale=${width}:${height}:flags=lanczos,format=yuv444p,${drawbox}[preview]`,
-    `[1:v]format=yuv444p,${drawbox}[final]`,
+    `[0:v]scale=${width}:${height}:flags=lanczos:out_range=tv,format=yuv444p,${drawbox}[preview]`,
+    `[1:v]scale=out_range=tv,format=yuv444p,${drawbox}[final]`,
     '[preview][final]ssim',
   ].join(';');
   const time = String(atSec);

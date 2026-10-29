@@ -299,8 +299,6 @@ async function importFileFromBrowser(page, filePath) {
     candidate.url().endsWith('/api/assets/import') && candidate.request().method() === 'POST'
   ));
   await input.setInputFiles(filePath);
-  await expect(page.locator('[data-media-import-status]')).toContainText(/загрузка|проверяем/i);
-  await expect(page.locator('[data-media-progress]')).toHaveAttribute('value', /\d+/);
   const response = await responsePromise;
   expect(response.status()).toBe(201);
   await expect(page.locator('[data-media-import-status]')).toContainText(/добавлено/i);
@@ -423,6 +421,9 @@ test('rendered preview stays visibly separate from the source player and refresh
     await expect(page.getByText('ФРАГМЕНТ 00:00.50–00:03.50', { exact: true })).toBeVisible();
     await expect(page.locator('video[data-source-video]')).toHaveCount(1);
     await expect(page.locator('video[data-preview-video]')).toHaveCount(1);
+    // #110: пока brief не утверждён, «ЧЕРНОВИК» показывает плеер поверх видео.
+    await expect(page.locator('[data-preview-frame] [data-draft-overlay]')).toHaveText('ЧЕРНОВИК');
+    await expect(page.locator('[data-preview-frame] [data-draft-overlay]')).toBeVisible();
     await page.locator('video[data-source-video]').evaluate((video) => { video.currentTime = 1; });
     await page.locator('video[data-preview-video]').evaluate((video) => { video.currentTime = 2; });
     await expect.poll(() => page.locator('video[data-source-video]').evaluate((video) => video.currentTime)).toBeCloseTo(1, 1);

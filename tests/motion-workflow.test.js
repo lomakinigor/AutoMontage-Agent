@@ -1,0 +1,357 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { fixture, sha, fakeMedia } = require('./helpers/motion-workflow-fixture.cjs');
+const { runMotion, parseMotionOptions } = require('../scripts/motion/build');
+const { runPreview } = require('../scripts/preview');
+const { runMotionPreviewGates } = require('../scripts/qa/motion-preview-gates');
+const { approveBrief, readProjectManifest } = require('../scripts/project/workspace');
+const { buildReelScenesProps } = require('../scripts/lesson/brief');
+const { buildMotionProps } = require('../scripts/motion/brief');
+function preview(f, dependencies = {}) {
+  return runPreview({ projectDir: f.workspace.dir, briefPath: f.published.relativePath, open: false }, { ...fakeMedia(), ...dependencies });
+}
+function approve(f) {
+  f.workspace.manifest = readProjectManifest(f.workspace.dir);
+  return approveBrief(f.workspace, f.published.jsonPath, { confirmPreviewViewed: true });
+}
+function final(f, approved, dependencies = {}) {
+  return runMotion({ projectDir: f.workspace.dir, briefPath: approved.jsonPath, versionLabel: 'reviewed' }, { ...fakeMedia(), probeVideoImpl: () => ({ width: 320, height: 568, fps: 30, duration: 2 }), ...dependencies });
+}
+test('motion-reel preview skips the lesson gates but runs its own motion barrier before publication', (t) => {
+  const f = fixture(t); const calls = [];
+  const result = preview(f, { ...fakeMedia(calls), runPreviewGatesImpl: () => { throw new Error('motion-reel не должен звать барьер lesson'); } });
+  assert.equal(result.metadata.kind, 'full');
+  const gates = calls.filter(call => call.stage === 'motion preview gates');
+  assert.equal(gates.length, 1);
+  assert.deepEqual(gates[0].input.expected, { width: 320, height: 568, fps: 30, totalSec: 2 });
+  assert.equal(gates[0].input.range.kind, 'full');
+  assert.match(gates[0].input.videoPath, /\.mp4$/);
+  // Барьер видит собранный файл до публикации и до полного декодирования.
+  const order = calls.map(call => call.stage);
+  assert.ok(order.indexOf('motion preview gates') < order.indexOf('preview decode'));
+});
+
+// Настоящий барьер с подменённым выводом ffprobe/ffmpeg: файлы fakeMedia – текст, а не MP4.
+const BLACK = '[blackdetect @ 0x1] black_start:0.8 black_end:1.2 black_duration:0.4\n';
+const summary = (lufs, peak) => `[Parsed_ebur128_0 @ 0x2] Summary:\n\n  Integrated loudness:\n    I:         ${lufs} LUFS\n    Threshold: -24.0 LUFS\n\n`
+  + `  Loudness range:\n    LRA:         5.0 LU\n\n  True peak:\n    Peak:      ${peak} dBFS\n`;
+function realGates({ rate = 48000, stderr = summary('-14.1', '-1.7') } = {}, seen = []) {
+  return {
+    runMotionPreviewGatesImpl(input, deps) {
+      return runMotionPreviewGates(input, { ...deps, captureImpl(command, args) {
+        seen.push({ command, args });
+        if (command === 'ffprobe') {
+          return { stdout: JSON.stringify({ streams: [
+            { codec_type: 'video', width: input.expected.width, height: input.expected.height, avg_frame_rate: '30/1', duration: '2.000000', bit_rate: '900000' },
+            { codec_type: 'audio', sample_rate: String(rate), duration: '2.000000' }], format: { duration: '2.000000' } }), stderr: '' };
+        }
+        return { stdout: '', stderr };
+      } });
+    },
+  };
+}
+function currentPreview(f) {
+  return { manifest: readProjectManifest(f.workspace.dir).currentPreview, bytes: fs.readFileSync(path.join(f.workspace.dir, 'previews/current-preview.mp4')) };
+}
+test('motion barrier: a clean preview is published and its report is written to qa/', (t) => {
+  const f = fixture(t); const seen = [];
+  const result = preview(f, realGates({}, seen));
+  assert.equal(result.metadata.kind, 'full');
+  assert.ok(seen.find(call => call.command === 'ffmpeg').args.some(arg => arg.startsWith('ebur128')));
+  const report = JSON.parse(fs.readFileSync(path.join(f.workspace.dir, 'qa/motion-preview-full.json'), 'utf8'));
+  assert.equal(report.block, false);
+  assert.ok(report.checks.every(item => item.status === 'pass'));
+});
+for (const [name, gates, id, pattern] of [
+  ['a black gap between scenes', { stderr: BLACK + summary('-14.0', '-1.8') }, 'black-frames', /0,8–1,2 с/],
+  ['integrated loudness out of −14 ±1 LUFS', { stderr: summary('-17.3', '-4.0') }, 'loudness-integrated', /-17,3|−17,3/],
+  ['a 44100 Hz soundtrack', { rate: 44100 }, 'sample-rate', /44100/],
+]) {
+  test(`motion barrier: ${name} blocks publication and keeps the previous preview`, (t) => {
+    const f = fixture(t); preview(f); const before = currentPreview(f);
+    assert.throws(() => preview(f, realGates(gates)), /preview не опубликован: проверки motion не пройдены \(qa\/motion-preview-full\.json\)/);
+    const after = currentPreview(f);
+    assert.deepEqual(after.manifest, before.manifest);
+    assert.deepEqual(after.bytes, before.bytes);
+    const report = JSON.parse(fs.readFileSync(path.join(f.workspace.dir, 'qa/motion-preview-full.json'), 'utf8'));
+    const failed = report.checks.find(item => item.id === id);
+    assert.equal(report.block, true);
+    assert.equal(failed.status, 'fail');
+    assert.match(failed.message, pattern);
+    assert.equal(fs.readdirSync(path.join(f.workspace.dir, 'previews')).filter(name => name.includes('.tmp')).length, 0);
+  });
+}
+test('motion barrier: a partial-range preview skips loudness but still publishes after other checks', (t) => {
+  const f = fixture(t); const seen = [];
+  const result = runPreview({ projectDir: f.workspace.dir, briefPath: f.published.relativePath, fromSec: 0.5, toSec: 1.5, open: false },
+    { ...fakeMedia(), ...realGates({ stderr: summary('-30.0', '-20.0') }, seen), probeVideoImpl: () => ({ width: 320, height: 568, fps: 30, duration: 1 }) });
+  assert.equal(result.metadata.kind, 'excerpt');
+  assert.equal(seen.find(call => call.command === 'ffmpeg').args.some(arg => arg.startsWith('ebur128')), false);
+  const report = JSON.parse(fs.readFileSync(path.join(f.workspace.dir, 'qa/motion-preview-excerpt-500-1500.json'), 'utf8'));
+  assert.deepEqual(report.checks.filter(item => item.status === 'skipped').map(item => item.id), ['loudness-integrated', 'true-peak']);
+  assert.equal(report.block, false);
+});
+test('motion option parser separates audio initialization from approved continuation', () => {
+  assert.equal(parseMotionOptions(['voice.wav', '--project', 'Reel']).narrationPath, 'voice.wav');
+  assert.equal(parseMotionOptions(['--project-dir', '.', '--brief', 'brief/approved.json']).briefPath, 'brief/approved.json');
+  for (const args of [[], ['voice.wav'], ['--brief', 'x'], ['voice.wav', '--project', 'X', '--face-x', '0.5'], ['--project-dir', '.', '--brief', 'a', '--brief', 'b']]) assert.throws(() => parseMotionOptions(args));
+});
+test('motion initialization transcribes locally and publishes a draft scaffold without a render', (t) => {
+  const f = fixture(t);
+  const result = runMotion({ narrationPath: f.narrationPath, projectDir: path.join(f.root, 'initialized'), project: 'Scaffold' }, {
+    probeOpenedAudioImpl() { return { mediaKind: 'audio', durationSec: 2 }; },
+    transcribeMotionNarrationImpl({ workspace }) {
+      const transcript = [{ start: 0, end: 2, text: 'Дословно из речи', words: [] }];
+      fs.writeFileSync(path.join(workspace.dir, 'transcript/words.json'), JSON.stringify(transcript));
+      return { transcript };
+    },
+  });
+  assert.equal(result.action, 'draft');
+  const brief = JSON.parse(fs.readFileSync(result.jsonPath));
+  assert.equal(brief.kind, 'motion-reel');
+  assert.equal(brief.status, 'draft');
+  assert.equal(brief.scenes[0].text, 'Дословно из речи');
+  assert.equal(brief.output.durationInFrames, 60);
+  assert.deepEqual(readProjectManifest(result.projectDir).renders, []);
+});
+test('stored motion kind chooses a clean full MotionReel preview (#110) and an audio-only no-follow bundle', (t) => {
+  const f = fixture(t); const calls = [];
+  const result = preview(f, fakeMedia(calls));
+  assert.equal(result.metadata.kind, 'full');
+  assert.equal(result.metadata.briefSha256, sha(fs.readFileSync(f.published.jsonPath)));
+  assert.equal(result.metadata.sourceSha256, sha(fs.readFileSync(f.workspace.sourcePath)));
+  const render = calls.find(call => call.stage.includes('Remotion'));
+  assert.ok(render.args.includes('MotionReel'));
+  // Полный preview в масштабе 1 – в качестве финала: без вшитого «ЧЕРНОВИК» и без CRF 28.
+  assert.equal(Object.hasOwn(render.props, 'draftPreview'), false);
+  assert.equal(render.args.some(arg => arg.startsWith('--crf')), false);
+  assert.equal(result.metadata.quality, 'final');
+  assert.equal(Object.hasOwn(render.props, 'faceSrc'), false);
+  assert.match(render.props.audioSrc, /^\.automontage\//);
+  assert.deepEqual(readProjectManifest(f.workspace.dir).renders, []);
+  assert.equal(fs.existsSync(path.join(f.workspace.dir, 'final/final.mp4')), false);
+});
+test('motion approval requires an explicitly viewed, exact full preview and stores three hashes', (t) => {
+  const f = fixture(t);
+  assert.throws(() => approve(f), /preview/i);
+  preview(f); f.workspace.manifest = readProjectManifest(f.workspace.dir);
+  assert.throws(() => approveBrief(f.workspace, f.published.jsonPath), /preview/i);
+  const result = approve(f); const brief = JSON.parse(fs.readFileSync(result.jsonPath));
+  assert.equal(brief.approval.draftSha256, sha(fs.readFileSync(f.published.jsonPath)));
+  assert.equal(brief.approval.sourceSha256, sha(fs.readFileSync(f.workspace.sourcePath)));
+  assert.equal(brief.approval.previewSha256, readProjectManifest(f.workspace.dir).currentPreview.sha256);
+  assert.equal(brief.status, 'approved');
+});
+test('motion approval rejects excerpt, changed narration and changed brief', (t) => {
+  for (const mutation of ['excerpt', 'source', 'brief']) {
+    const f = fixture(t); preview(f);
+    if (mutation === 'excerpt') {
+      const file = path.join(f.workspace.dir, 'project.json'); const manifest = JSON.parse(fs.readFileSync(file));
+      manifest.currentPreview.kind = 'excerpt'; fs.writeFileSync(file, JSON.stringify(manifest));
+    } else if (mutation === 'source') fs.appendFileSync(f.workspace.sourcePath, 'changed');
+    else { f.brief.title = 'Изменено'; fs.writeFileSync(f.published.jsonPath, JSON.stringify(f.brief)); }
+    assert.throws(() => approve(f), /preview|bytes|identity/i, mutation);
+    assert.equal(fs.readdirSync(path.join(f.workspace.dir, 'brief')).some(name => name.includes('approved')), false);
+  }
+});
+test('final rejects draft and unregistered approved data before allocating renders', (t) => {
+  const f = fixture(t);
+  assert.throws(() => final(f, { jsonPath: f.published.jsonPath }), /approved/i);
+  const unregistered = path.join(f.workspace.dir, 'brief/forged.motion.json');
+  fs.writeFileSync(unregistered, JSON.stringify({ ...f.brief, status: 'approved' }));
+  assert.throws(() => final(f, { jsonPath: unregistered }), /registered|current/i);
+  assert.deepEqual(fs.readdirSync(path.join(f.workspace.dir, 'renders')), []);
+});
+test('approved final preserves immutable labeled history and publishes only after QA', (t) => {
+  const f = fixture(t); preview(f); const approved = approve(f); const calls = [];
+  const one = final(f, approved, { ...fakeMedia(calls), probeVideoImpl: () => ({ width: 320, height: 568, fps: 30, duration: 2 }) });
+  const two = final(f, approved);
+  const manifest = readProjectManifest(f.workspace.dir);
+  assert.equal(one.action, 'render');
+  assert.equal(two.action, 'render');
+  assert.deepEqual(manifest.renders.map(render => [render.dir, render.status]), [['renders/v01-reviewed', 'complete'], ['renders/v02-reviewed', 'complete']]);
+  assert.equal(fs.readFileSync(one.finalPath, 'utf8'), 'rendered');
+  assert.equal(fs.readFileSync(path.join(f.workspace.dir, 'renders/v01-reviewed/final.mp4'), 'utf8'), 'rendered');
+  assert.ok(calls.some(call => call.stage === 'motion QA decode'));
+  assert.equal(calls.find(call => call.stage.includes('Remotion')).props.draftPreview, undefined);
+});
+test('final detects edited approved copy, draft, narration and preview before rendering', (t) => {
+  for (const mutation of ['approved', 'draft', 'source', 'preview']) {
+    const f = fixture(t); preview(f); const approved = approve(f);
+    if (mutation === 'approved') { const brief = JSON.parse(fs.readFileSync(approved.jsonPath)); brief.title = 'changed'; fs.writeFileSync(approved.jsonPath, JSON.stringify(brief)); }
+    if (mutation === 'draft') fs.appendFileSync(f.published.jsonPath, ' ');
+    if (mutation === 'source') fs.appendFileSync(f.workspace.sourcePath, 'changed');
+    if (mutation === 'preview') fs.appendFileSync(path.join(f.workspace.dir, 'previews/current-preview.mp4'), 'changed');
+    assert.throws(() => final(f, approved), /approval|preview|changed|bytes/i, mutation);
+    assert.deepEqual(fs.readdirSync(path.join(f.workspace.dir, 'renders')), []);
+  }
+});
+test('failed final QA records failure and preserves the prior final', (t) => {
+  const f = fixture(t); preview(f); const approved = approve(f); const good = final(f, approved);
+  const prior = fs.readFileSync(good.finalPath);
+  assert.throws(() => final(f, approved, { probeVideoImpl: () => ({ width: 1, height: 1, fps: 1, duration: 1 }) }), /metadata|QA/i);
+  assert.deepEqual(fs.readFileSync(good.finalPath), prior);
+  assert.equal(readProjectManifest(f.workspace.dir).renders.at(-1).status, 'failed');
+});
+test('both renderer builders reject the other brief kind', (t) => {
+  const f = fixture(t);
+  assert.throws(() => buildReelScenesProps({ brief: { ...f.brief, status: 'approved' } }));
+  assert.throws(() => buildMotionProps({ brief: require('../examples/lesson-neutral-approved.json') }));
+});
+test('motion preview refuses a lesson entry even with a motion filename', (t) => {
+  const f = fixture(t); const file = path.join(f.workspace.dir, 'project.json'); const manifest = JSON.parse(fs.readFileSync(file));
+  manifest.briefs[0].kind = 'lesson'; fs.writeFileSync(file, JSON.stringify(manifest));
+  assert.throws(() => preview(f), /kind|lesson|invalid/i);
+});
+test('motion media bundle verifies project file hashes and rejects symlinks', (t) => {
+  const f = fixture(t); const media = path.join(f.workspace.dir, 'assets/broll/photo.png'); fs.writeFileSync(media, 'photo');
+  f.brief.scenes = [{ scene: 'media', start: 0, end: 2, media: { kind: 'image', src: 'assets/broll/photo.png', sha256: sha('photo'), fit: 'contain' } }];
+  fs.writeFileSync(f.published.jsonPath, JSON.stringify(f.brief));
+  preview(f);
+  fs.writeFileSync(media, 'changed'); assert.throws(() => preview(f), /hash/i);
+  fs.unlinkSync(media); fs.symlinkSync(f.narrationPath, media); assert.throws(() => preview(f), /symbolic/i);
+});
+
+test('motion music is hash-bound and shared finishing uses an isolated ducking source', (t) => {
+  const f = fixture(t); const calls = [];
+  fs.writeFileSync(path.join(f.workspace.dir, 'assets/music/track.wav'), 'music');
+  f.brief.music = { file: 'assets/music/track.wav', sha256: sha('music'), gainDb: -20, ducking: { ratio: 6 } };
+  fs.writeFileSync(f.published.jsonPath, JSON.stringify(f.brief));
+  preview(f, fakeMedia(calls));
+  const mix = calls.find(call => call.stage === 'preview music mix');
+  assert.equal(mix.args[mix.args.indexOf('--ratio') + 1], '6');
+  assert.match(mix.args[1], /automontage-render-.*media-2\.wav/);
+  const approved = approve(f); final(f, approved);
+  fs.writeFileSync(path.join(f.workspace.dir, 'assets/music/track.wav'), 'new music');
+  assert.throws(() => final(f, approved), /hash/i);
+});
+
+test('motion approval rejects replaced media after preview', (t) => {
+  const f = fixture(t); const media = path.join(f.workspace.dir, 'assets/broll/photo.png'); fs.writeFileSync(media, 'photo');
+  f.brief.scenes = [{ scene: 'media', start: 0, end: 2, media: { kind: 'image', src: 'assets/broll/photo.png', sha256: sha('photo'), fit: 'contain' } }];
+  fs.writeFileSync(f.published.jsonPath, JSON.stringify(f.brief));
+  preview(f); fs.writeFileSync(media, 'changed');
+  assert.throws(() => approve(f), /hash/i);
+});
+
+test('final refuses foreign version directories and late narration changes', (t) => {
+  const f = fixture(t); preview(f); const approved = approve(f);
+  const target = path.join(f.workspace.dir, 'renders/v01-reviewed'); fs.mkdirSync(target);
+  fs.writeFileSync(path.join(target, 'sentinel.txt'), 'foreign');
+  assert.throws(() => final(f, approved), /exist/i);
+  assert.equal(fs.readFileSync(path.join(target, 'sentinel.txt'), 'utf8'), 'foreign');
+  const f2 = fixture(t); preview(f2); const approved2 = approve(f2);
+  const deps = fakeMedia(); const run = deps.runToolImpl;
+  assert.throws(() => final(f2, approved2, { ...deps, runToolImpl(command, args, options) {
+    run(command, args, options); if (options.stage === 'motion Remotion') fs.appendFileSync(f2.workspace.sourcePath, 'changed');
+  }, probeVideoImpl: () => ({ width: 320, height: 568, fps: 30, duration: 2 }) }), /changed|identity/i);
+  assert.equal(readProjectManifest(f2.workspace.dir).renders.at(-1).status, 'failed');
+  assert.equal(fs.existsSync(path.join(f2.workspace.dir, f2.workspace.manifest.final)), false);
+});
+
+test('approved motion JSON is byte-immutable, including receipt and whitespace', (t) => {
+  for (const change of ['whitespace', 'receipt']) {
+    const f = fixture(t); preview(f); const approved = approve(f);
+    if (change === 'whitespace') fs.appendFileSync(approved.jsonPath, '\n');
+    else { const brief = JSON.parse(fs.readFileSync(approved.jsonPath)); brief.approval.confirmedAt = '2026-09-08T00:00:00.000Z'; fs.writeFileSync(approved.jsonPath, `${JSON.stringify(brief, null, 2)}\n`); }
+    assert.throws(() => final(f, approved), /approval|immutable|hash/i, change);
+    assert.deepEqual(fs.readdirSync(path.join(f.workspace.dir, 'renders')), []);
+  }
+});
+
+test('motion preview rejects narration A → B → A around the real bundle snapshot', (t) => {
+  const f = fixture(t); preview(f);
+  const previous = readProjectManifest(f.workspace.dir).currentPreview;
+  const previousBytes = fs.readFileSync(path.join(f.workspace.dir, 'previews/current-preview.mp4'));
+  const a = fs.readFileSync(f.workspace.sourcePath); const b = Buffer.from('evilvoice');
+  let callbackRan = false;
+  assert.throws(() => preview(f, {
+    withPreviewMediaBundleImpl(options, operation) {
+      // runPreview has already hashed A. The isolated render snapshot now sees B.
+      fs.writeFileSync(f.workspace.sourcePath, b);
+      try {
+        return require('../scripts/render-media-bundle').withPreviewMediaBundle(options, lease => {
+          callbackRan = true;
+          assert.deepEqual(fs.readFileSync(path.join(lease.publicDirectory, lease.props.audioSrc)), b);
+          fs.writeFileSync(f.workspace.sourcePath, a);
+          return operation(lease);
+        });
+      } finally { fs.writeFileSync(f.workspace.sourcePath, a); }
+    },
+  }), /hash|source|narration/i);
+  assert.equal(callbackRan, false, 'mismatched narration must fail before Remotion');
+  assert.deepEqual(fs.readFileSync(f.workspace.sourcePath), a);
+  assert.deepEqual(readProjectManifest(f.workspace.dir).currentPreview, previous);
+  assert.deepEqual(fs.readFileSync(path.join(f.workspace.dir, 'previews/current-preview.mp4')), previousBytes);
+});
+
+for (const changedRole of ['approved', 'draft']) {
+  test(`final rejects late ${changedRole} mutation during the last narration hash`, (t) => {
+    const f = fixture(t); preview(f); const approved = approve(f); const prior = final(f, approved);
+    const priorBytes = fs.readFileSync(prior.finalPath);
+    const before = readProjectManifest(f.workspace.dir);
+    const changedPath = changedRole === 'approved' ? approved.jsonPath : f.published.jsonPath;
+    const descriptors = new Map(); let armed = false; let injected = false;
+    const originalOpen = fs.openSync; const originalRead = fs.readSync;
+    t.mock.method(fs, 'openSync', (filename, ...args) => {
+      const fd = originalOpen(filename, ...args); descriptors.set(fd, String(filename)); return fd;
+    });
+    t.mock.method(fs, 'readSync', (fd, ...args) => {
+      const count = originalRead(fd, ...args);
+      if (armed && !injected && descriptors.get(fd) === f.workspace.sourcePath && count === 0) {
+        injected = true; fs.appendFileSync(changedPath, '\n');
+      }
+      return count;
+    });
+    try {
+      assert.throws(() => final(f, approved, { probeVideoImpl() {
+        armed = true; return { width: 320, height: 568, fps: 30, duration: 2 };
+      } }), /changed|identity|hash/i);
+      assert.equal(injected, true);
+    } finally { t.mock.restoreAll(); }
+    const after = readProjectManifest(f.workspace.dir);
+    assert.equal(after.renders.at(-1).status, 'failed');
+    assert.equal(after.latestRender, before.latestRender);
+    assert.deepEqual(fs.readFileSync(prior.finalPath), priorBytes);
+  });
+
+  for (const point of ['mp4-fsync', 'mp4-rename', 'manifest-fsync']) {
+    test(`guarded final rolls back ${changedRole} mutation at ${point}`, (t) => {
+      const f = fixture(t); preview(f); const approved = approve(f); const prior = final(f, approved);
+      const priorBytes = fs.readFileSync(prior.finalPath);
+      const before = readProjectManifest(f.workspace.dir);
+      const changedPath = changedRole === 'approved' ? approved.jsonPath : f.published.jsonPath;
+      const descriptors = new Map(); let renamed = false; let injected = false;
+      const originalOpen = fs.openSync; const originalFsync = fs.fsyncSync; const originalRename = fs.renameSync;
+      const mutate = () => { injected = true; fs.appendFileSync(changedPath, '\n'); };
+      t.mock.method(fs, 'openSync', (filename, ...args) => {
+        const fd = originalOpen(filename, ...args); descriptors.set(fd, String(filename)); return fd;
+      });
+      t.mock.method(fs, 'fsyncSync', fd => {
+        const result = originalFsync(fd); const filename = descriptors.get(fd) || '';
+        if (!injected && ((point === 'mp4-fsync' && filename.startsWith(`${prior.finalPath}.tmp-`))
+          || (point === 'manifest-fsync' && renamed && filename.includes('project.json.tmp-render-manifest-')))) mutate();
+        return result;
+      });
+      t.mock.method(fs, 'renameSync', (from, to) => {
+        const result = originalRename(from, to);
+        if (String(to) === prior.finalPath && String(from).startsWith(`${prior.finalPath}.tmp-`)) {
+          renamed = true;
+          if (!injected && point === 'mp4-rename') mutate();
+        }
+        return result;
+      });
+      try {
+        assert.throws(() => final(f, approved), /changed|identity|hash/i);
+        assert.equal(injected, true, 'the intended publication point was exercised');
+      } finally { t.mock.restoreAll(); }
+      const after = readProjectManifest(f.workspace.dir);
+      assert.equal(after.renders.at(-1).status, 'failed');
+      assert.equal(after.latestRender, before.latestRender);
+      assert.deepEqual(fs.readFileSync(prior.finalPath), priorBytes);
+      assert.deepEqual(fs.readdirSync(path.dirname(prior.finalPath)), [path.basename(prior.finalPath)]);
+    });
+  }
+}

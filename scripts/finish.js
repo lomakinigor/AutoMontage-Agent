@@ -78,6 +78,7 @@ function finishEncodeCommand(input, output, options, isHDR) {
   args.push(
     '-af', buildFinishAudioFilter(options.audioAdvanceMs),
     '-c:a', 'aac',
+    '-ar', '48000',
     '-b:a', '160k',
     '-shortest',
     '-movflags', '+faststart',
@@ -89,7 +90,7 @@ function finishEncodeCommand(input, output, options, isHDR) {
 function loudnessCommand(output) {
   return {
     command: 'ffmpeg',
-    args: ['-i', hostPath(output), '-af', 'loudnorm=print_format=summary', '-f', 'null', '-'],
+    args: ['-i', hostPath(output), '-vn', '-af', 'loudnorm=print_format=summary', '-f', 'null', '-'],
   };
 }
 

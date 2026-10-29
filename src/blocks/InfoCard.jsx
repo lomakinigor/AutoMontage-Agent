@@ -39,12 +39,12 @@ export const InfoCard = ({
       background: t.colors.cardBg, border: t.cardBorder, borderRadius: t.radius,
       padding: '32px 38px 36px', boxShadow: t.cardShadow,
     }}>
-      <div style={{
+      <div data-qa-text="info-tag" style={{
         fontFamily: t.fonts.mono, fontWeight: 700, fontSize: 24, letterSpacing: 3,
         color: t.colors.accentDark, textShadow: glowText(t, t.colors.accent),
       }}>{tag}</div>
 
-      <div style={{
+      <div data-qa-text="info-title" style={{
         fontFamily: t.fonts.display, fontWeight: 700, fontSize: titleSize, lineHeight: 0.98,
         color: t.colors.text, marginTop: 6, minHeight: 150,
         textShadow: glowText(t, t.colors.text),
@@ -56,7 +56,7 @@ export const InfoCard = ({
       {(pills.length > 0 || countPill) && (
         <div style={{ marginTop: 18, display: 'flex', gap: 14, alignItems: 'center' }}>
           {countPill && (
-            <div style={{
+            <div data-qa-text="info-count" style={{
               fontFamily: t.fonts.mono, fontWeight: 700, fontSize: 26, letterSpacing: 1,
               color: t.colors.milk, background: t.colors.accent,
               padding: '8px 20px', borderRadius: 999,
@@ -64,7 +64,7 @@ export const InfoCard = ({
             }}>{cnt} {countPill.suffix}</div>
           )}
           {pills.map((p, i) => (
-            <div key={i} style={{
+            <div key={i} data-qa-text={`info-pill-${i}`} style={{
               transform: `scale(${i === 0 && !countPill ? 1 : clamp(pill2S, 0, 1, 0.4, 1)})`,
               transformOrigin: 'left center',
               fontFamily: t.fonts.mono, fontWeight: 700, fontSize: 26, letterSpacing: 1,

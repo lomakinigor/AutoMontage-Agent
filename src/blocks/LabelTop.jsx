@@ -11,7 +11,7 @@ export const LabelTop = ({ text = '>_ АНОНС' }) => {
   const y = clamp(s, 0, 1, -80, 0);
 
   return (
-    <div style={{
+    <div data-qa-text="label-top" style={{
       position: 'absolute', top: 70, left: 44,
       transform: `translateY(${y}px)`, opacity: s,
       fontFamily: t.fonts.mono, fontWeight: 700, fontSize: 26, letterSpacing: 2,
